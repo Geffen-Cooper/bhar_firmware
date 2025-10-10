@@ -16,7 +16,40 @@
 
 #include "run_nn.h"
 
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/addr.h>
+
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
+
+#define DEVICE_NAME CONFIG_BT_DEVICE_NAME
+#define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
+
+/* STEP 2.1 - Declare the Company identifier (Company ID) */
+#define COMPANY_ID_CODE 0x0059
+
+/* STEP 2.2 - Declare the structure for your custom data  */
+typedef struct adv_mfg_data {
+	uint16_t company_code; /* Company Identifier Code. */
+	uint16_t num_ints; /* Number of times bma400 interrupts (should be once a second) */
+} adv_mfg_data_type;
+
+
+/* STEP 1 - Create an LE Advertising Parameters variable */
+static const struct bt_le_adv_param *adv_param =
+	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
+			400, /* Min Advertising Interval 250ms (400*0.625ms) */
+			401, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+			NULL); /* Set to NULL for undirected advertising */
+
+/* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
+static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x00 };
+
+static const struct bt_data ad[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+	/* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
+	BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
+};
 
 // threads
 #define STACKSIZE 1024
@@ -36,7 +69,7 @@ static struct gpio_callback int_cb_data;
 // BMA400
 #define BMA400_REG_FIFO_CONFIG_1                  UINT8_C(0x27)
 #define FIFOINTER 3
-#define FIFO_SAMPLES 75 // number of samples for fifo content
+#define FIFO_SAMPLES 25 // number of samples for fifo content
 #define FIFO_WATERMARK_LEVEL    UINT16_C(FIFO_SAMPLES*4) // 4 bytes per frame (XYZ+header)
 #define FIFO_FULL_SIZE          UINT16_C(1024)
 #define FIFO_SIZE               (FIFO_FULL_SIZE + BMA400_FIFO_BYTES_OVERREAD)
@@ -87,14 +120,22 @@ void thread_read_bma400(void)
 		const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
 
-		// Read one sample
-		bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+		// // Read one sample
+		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
 
 		// Disable SPI
 		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
+		adv_mfg_data.num_ints += 1; // increment the data count
+
+		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
+		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+		k_sleep(K_MSEC(10)); // wait at least one cycle
+		bt_le_adv_stop(); // stop advertising
+
 		// One Time Step for LSTM NN
-		LSTM_ONE_TIME_STEP_BHAR();
+		// LSTM_ONE_TIME_STEP_BHAR();
 		// FC_BHAR();
 	}
 }
@@ -247,6 +288,18 @@ void init_read_lp()
 int main(void)
 {
 	int err;
+
+	// Fix the BLE address
+	bt_addr_le_t addr;
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+    err = bt_id_create(&addr, NULL);
+
+	// Enable BLE
+	err = bt_enable(NULL);
+	if (err) {
+		LOG_ERR("Bluetooth init failed (err %d)\n", err);
+		return -1;
+	}
 	
 	/* STEP 10.1 - Check if SPI and GPIO devices are ready */
 	err = spi_is_ready_dt(&spispec);
@@ -278,8 +331,8 @@ int main(void)
   
 
 	// init_activity();
-	// init_fifo_watermark();
-	init_read_lp();
+	init_fifo_watermark();
+	// init_read_lp();
 
 	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
