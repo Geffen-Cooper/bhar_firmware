@@ -18,8 +18,10 @@
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/addr.h>
+#include <zephyr/bluetooth/gap.h>
+#include <bluetooth/scan.h>
 
-LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
 #define DEVICE_NAME CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
@@ -37,12 +39,20 @@ typedef struct adv_mfg_data {
 /* STEP 1 - Create an LE Advertising Parameters variable */
 static const struct bt_le_adv_param *adv_param =
 	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
-			400, /* Min Advertising Interval 250ms (400*0.625ms) */
-			401, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+			400, /* Min Advertising Interval 500ms (800*0.625ms) */
+			401, /* Max Advertising Interval 500.625ms (801*0.625ms) */
 			NULL); /* Set to NULL for undirected advertising */
 
 /* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
 static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x00 };
+
+// static const struct bt_data ad[] = {
+// 	/* STEP 4.1.2 - Set the advertising flags */
+// 	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+// 	/* STEP 4.1.3 - Set the advertising packet data  */
+// 	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+
+// };
 
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
@@ -102,46 +112,106 @@ uint8_t fifo_buff[FIFO_SIZE] = { 0 };
 struct bma400_sensor_conf settings;
 
 
-void bma_int_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+static void scan_filter_match(struct bt_scan_device_info *device_info,
+			      			  struct bt_scan_filter_match *filter_match,
+			      			  bool connectable)
 {
-	// set the semaphore
-	k_sem_give(&bma400_ready);
+	int err;
+	static int count = 0;
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(device_info->recv_info->addr, addr, sizeof(addr));
+	LOG_INF("SCAN FILTER MATCH: %d", count);
+	// err = bt_scan_stop();
+	count += 1;
 }
 
+BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
 
-void thread_read_bma400(void)
+static void scan_init(void)
 {
-	static int count = 0;
-	while(1){
-		LOG_INF("In the read thread");
-		k_sem_take(&bma400_ready, K_FOREVER); // Sleep here if semaphore is at 0
+	int err;
 
-		// Enable SPI
-		const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
-		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
+	/* Use active scanning and disable duplicate filtering to handle any
+	 * devices that might update their advertising data at runtime. */
+	struct bt_le_scan_param scan_param = {
+		.type     = BT_LE_SCAN_TYPE_PASSIVE,
+		.interval = BT_GAP_SCAN_FAST_INTERVAL,
+		.window   = BT_GAP_SCAN_FAST_WINDOW,
+		.options  = BT_LE_SCAN_OPT_NONE
+	};
 
-		// // Read one sample
-		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
-		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
+	struct bt_scan_init_param scan_init = {
+		.connect_if_match = 0,
+		.scan_param = &scan_param,
+		.conn_param = NULL
+	};
 
-		// Disable SPI
-		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+	bt_scan_init(&scan_init);
+	bt_scan_cb_register(&scan_cb);
 
-		adv_mfg_data.num_ints += 1; // increment the data count
+	bt_addr_le_t addr;
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
 
-		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
-		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-		k_sleep(K_MSEC(10)); // wait at least one cycle
-		bt_le_adv_stop(); // stop advertising
-
-		// One Time Step for LSTM NN
-		// LSTM_ONE_TIME_STEP_BHAR();
-		// FC_BHAR();
+	err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
+	if (err) {
+		LOG_INF("Filters cannot be turned on (err %d)\n", err);
 	}
 }
 
-// Need to make sure stack is big enough to run NN code
-K_THREAD_DEFINE(thread_read_bma400_id, STACKSIZE*4, thread_read_bma400, NULL, NULL, NULL, THREAD_READ_BMA_PRIORITY, 0, 0);
+
+
+
+// void bma_int_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+// {
+// 	// set the semaphore
+// 	k_sem_give(&bma400_ready);
+// }
+
+
+// void thread_read_bma400(void)
+// {
+// 	static int count = 0;
+// 	while(1){
+// 		LOG_INF("In the read thread");
+// 		k_sem_take(&bma400_ready, K_FOREVER); // sleep until we get an interrupt from the bma400
+// 		const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1)); // enable SPI
+// 		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
+// 		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
+// 		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND); // disable spi
+
+// 		adv_mfg_data.num_ints += 1; // increment the data count
+
+// 		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
+// 		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+// 		k_sleep(K_MSEC(10)); // wait at least one cycle
+// 		bt_le_adv_stop(); // stop advertising
+
+// 		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor); // read one sample
+// 		// int_en.conf = BMA400_DISABLE;
+// 		// bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+
+// 		// if(count == 100)
+// 		// {
+// 		// 	int_en.conf = BMA400_DISABLE;
+// 		// 	bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+// 		// 	bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
+// 		// }
+
+// 		// pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+
+// 		// LSTM_ONE_TIME_STEP_BHAR();
+// 		// FC_BHAR();
+// 		// count += 1;
+// 	}
+// }
+
+// K_THREAD_DEFINE(thread_read_bma400_id, STACKSIZE*4, thread_read_bma400, NULL, NULL, NULL, THREAD_READ_BMA_PRIORITY, 0, 0);
 
 
 
@@ -287,60 +357,79 @@ void init_read_lp()
 
 int main(void)
 {
+	LOG_INF("Application Started ====================");
 	int err;
 
-	// Fix the BLE address
-	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
-    err = bt_id_create(&addr, NULL);
+	// bt_addr_le_t addr;
+    // err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+    // err = bt_id_create(&addr, NULL);
 
-	// Enable BLE
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (err %d)\n", err);
 		return -1;
 	}
+	LOG_INF("==================== BT INITIALIZED");
 	
-	/* STEP 10.1 - Check if SPI and GPIO devices are ready */
-	err = spi_is_ready_dt(&spispec);
-	if (!err) {
-		LOG_ERR("Error: SPI device is not ready, err: %d", err);
-		return 0;
-	}
+	// /* STEP 10.1 - Check if SPI and GPIO devices are ready */
+	// err = spi_is_ready_dt(&spispec);
+	// if (!err) {
+	// 	LOG_ERR("Error: SPI device is not ready, err: %d", err);
+	// 	return 0;
+	// }
 
-	if (!device_is_ready(int_pin.port)) {
-		return -1;
-	}
+	// if (!device_is_ready(int_pin.port)) {
+	// 	return -1;
+	// }
 
-	err = gpio_pin_configure_dt(&int_pin, GPIO_INPUT);
-	if (err < 0) {
-		return -1;
-	}
-	/* STEP 3 - Configure the interrupt on the button's pin */
-	err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_EDGE_RISING);
+	// err = gpio_pin_configure_dt(&int_pin, GPIO_INPUT);
+	// if (err < 0) {
+	// 	return -1;
+	// }
+	// /* STEP 3 - Configure the interrupt on the button's pin */
+	// err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_EDGE_RISING);
 	// err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_LEVEL_ACTIVE);
 
 	/* STEP 6 - Initialize the static struct gpio_callback variable   */
-	gpio_init_callback(&int_cb_data, bma_int_handler, BIT(int_pin.pin));
+	// gpio_init_callback(&int_cb_data, bma_int_handler, BIT(int_pin.pin));
 
-	/* STEP 7 - Add the callback function by calling gpio_add_callback()   */
-	gpio_add_callback(int_pin.port, &int_cb_data);
+	// /* STEP 7 - Add the callback function by calling gpio_add_callback()   */
+	// gpio_add_callback(int_pin.port, &int_cb_data);
 
+	
+	// LOG_INF("SPI TEST");
 
-	bma400_init(&bma_sensor);
+	// uint8_t data[3] = {0};
+	// read_reg_spi(0x80,data,2,NULL);
+	// LOG_INF("Data: %02X,%02X,%02X",data[0],data[1],data[2]);
+
+	// bma400_init(&bma_sensor);
   
 
 	// init_activity();
-	init_fifo_watermark();
+	// init_fifo_watermark();
 	// init_read_lp();
 
-	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
-	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+	// const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
+	// pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
-	// Do not disable GPIO, need it for interrupt
 	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 	
+	// err = bt_le_adv_start(BT_LE_ADV_NCONN, ad, ARRAY_SIZE(ad), NULL, 0);
+	// if (err) {
+	// 	LOG_ERR("Advertising failed to start (err %d)\n", err);
+	// 	return -1;
+	// }
+
+	scan_init();
+
+	err = bt_scan_start(BT_SCAN_TYPE_SCAN_PASSIVE);
+	if (err) {
+		LOG_ERR("Scanning failed to start (err %d)\n", err);
+		return 0;
+	}
+	LOG_INF("Scanning Started ====================");
 
 	while(1){
 		k_sleep(K_FOREVER);
