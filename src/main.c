@@ -29,6 +29,10 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 /* STEP 2.1 - Declare the Company identifier (Company ID) */
 #define COMPANY_ID_CODE 0x0059
 
+#define SCAN_ON_TIME_MS   100   /* active scan window */
+#define SCAN_OFF_TIME_MS 1000   /* idle period between scans */
+static struct k_work_delayable scan_cycle_work;
+
 /* STEP 2.2 - Declare the structure for your custom data  */
 typedef struct adv_mfg_data {
 	uint16_t company_code; /* Company Identifier Code. */
@@ -110,7 +114,7 @@ struct bma400_sensor_conf conf;
 uint8_t fifo_buff[FIFO_SIZE] = { 0 };
 
 struct bma400_sensor_conf settings;
-
+static int cycles = 0;
 
 static void scan_filter_match(struct bt_scan_device_info *device_info,
 			      			  struct bt_scan_filter_match *filter_match,
@@ -121,12 +125,37 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 	char addr[BT_ADDR_LE_STR_LEN];
 
 	bt_addr_le_to_str(device_info->recv_info->addr, addr, sizeof(addr));
-	LOG_INF("SCAN FILTER MATCH: %d", count);
-	// err = bt_scan_stop();
+	LOG_INF("SCAN FILTER MATCH: %d / %d", count, cycles);
+	err = bt_scan_stop();
 	count += 1;
 }
 
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
+
+/* Called when scan should stop and restart later */
+static void scan_cycle_handler(struct k_work *work)
+{
+    static bool scanning = false;
+
+    if (scanning) {
+		cycles += 1;
+        /* Stop scanning */
+        bt_scan_stop();
+        scanning = false;
+        LOG_INF("Scan stopped\n");
+
+        /* Schedule next scan start after off-time */
+        k_work_schedule(&scan_cycle_work, K_MSEC(SCAN_OFF_TIME_MS));
+    } else {
+        /* Start scanning */
+        bt_scan_start(BT_LE_SCAN_TYPE_PASSIVE);
+        scanning = true;
+        LOG_INF("Scan started\n");
+
+        /* Schedule stop after on-time */
+        k_work_schedule(&scan_cycle_work, K_MSEC(SCAN_ON_TIME_MS));
+    }
+}
 
 static void scan_init(void)
 {
@@ -137,7 +166,7 @@ static void scan_init(void)
 	struct bt_le_scan_param scan_param = {
 		.type     = BT_LE_SCAN_TYPE_PASSIVE,
 		.interval = BT_GAP_SCAN_FAST_INTERVAL,
-		.window   = BT_GAP_SCAN_FAST_WINDOW,
+		.window   = 0x0C,
 		.options  = BT_LE_SCAN_OPT_NONE
 	};
 
@@ -424,12 +453,16 @@ int main(void)
 
 	scan_init();
 
-	err = bt_scan_start(BT_SCAN_TYPE_SCAN_PASSIVE);
-	if (err) {
-		LOG_ERR("Scanning failed to start (err %d)\n", err);
-		return 0;
-	}
-	LOG_INF("Scanning Started ====================");
+	// err = bt_scan_start(BT_SCAN_TYPE_SCAN_PASSIVE);
+	// if (err) {
+	// 	LOG_ERR("Scanning failed to start (err %d)\n", err);
+	// 	return 0;
+	// }
+	// LOG_INF("Scanning Started ====================");
+
+	/* Start the periodic scanning cycle */
+    k_work_init_delayable(&scan_cycle_work, scan_cycle_handler);
+    k_work_schedule(&scan_cycle_work, K_NO_WAIT);
 
 	while(1){
 		k_sleep(K_FOREVER);
