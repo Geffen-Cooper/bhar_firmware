@@ -29,7 +29,7 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 /* STEP 2.1 - Declare the Company identifier (Company ID) */
 #define COMPANY_ID_CODE 0x0059
 
-#define SCAN_ON_TIME_MS   100   /* active scan window */
+#define SCAN_ON_TIME_MS   16   /* active scan window */
 #define SCAN_OFF_TIME_MS 1000   /* idle period between scans */
 static struct k_work_delayable scan_cycle_work;
 
@@ -165,8 +165,8 @@ static void scan_init(void)
 	 * devices that might update their advertising data at runtime. */
 	struct bt_le_scan_param scan_param = {
 		.type     = BT_LE_SCAN_TYPE_PASSIVE,
-		.interval = 0x0080,
-		.window   = 0x0008,
+		.interval = 8, // 5ms
+		.window   = 4, // 2.5ms
 		.options  = BT_LE_SCAN_OPT_NONE
 	};
 
