@@ -5,68 +5,112 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
 #include <zephyr/device.h>
-#include <zephyr/pm/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/logging/log.h>
+/* STEP 3.1 - Include the header file of the Zephyr ADC API */
+#include <zephyr/drivers/adc.h>
 
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/addr.h>
+/* STEP 3.2 - Define a variable of type adc_dt_spec for each channel */
+static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
-LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
-
-#define DEVICE_NAME CONFIG_BT_DEVICE_NAME
-#define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
-
-/* STEP 2.1 - Declare the Company identifier (Company ID) */
-#define COMPANY_ID_CODE 0x0059
-
-/* STEP 2.2 - Declare the structure for your custom data  */
-typedef struct adv_mfg_data {
-	uint16_t company_code; /* Company Identifier Code. */
-	uint16_t num_ints; /* Number of times bma400 interrupts (should be once a second) */
-} adv_mfg_data_type;
-
-
-/* STEP 1 - Create an LE Advertising Parameters variable */
-static const struct bt_le_adv_param *adv_param =
-	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
-			32, /* Min Advertising Interval 500ms (800*0.625ms) */
-			33, /* Max Advertising Interval 500.625ms (801*0.625ms) */
-			NULL); /* Set to NULL for undirected advertising */
-
-/* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
-static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x00 };
-
-static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
-	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
-	/* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
-	BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
-};
+LOG_MODULE_REGISTER(Lesson6_Exercise1, LOG_LEVEL_DBG);
 
 int main(void)
 {
-	
 	int err;
+	uint32_t count = 0;
 
-	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
-    err = bt_id_create(&addr, NULL);
+	/* STEP 4.1 - Define a variable of type adc_sequence and a buffer of type uint16_t */
+	int16_t buf;
+	struct adc_sequence sequence = {
+		.buffer = &buf,
+		/* buffer size in bytes, not number of samples */
+		.buffer_size = sizeof(buf),
+		// Optional
+		//.calibrate = true,
+	};
 
-	err = bt_enable(NULL);
-
-	bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-
-	if (err) {
-		LOG_ERR("Bluetooth init failed (err %d)\n", err);
-		return -1;
+	/* STEP 3.3 - validate that the ADC peripheral (SAADC) is ready */
+	if (!adc_is_ready_dt(&adc_channel)) {
+		LOG_ERR("ADC controller devivce %s not ready", adc_channel.dev->name);
+		return 0;
 	}
-	
-
-	while(1){
-		k_sleep(K_FOREVER);
+	/* STEP 3.4 - Setup the ADC channel */
+	err = adc_channel_setup_dt(&adc_channel);
+	if (err < 0) {
+		LOG_ERR("Could not setup channel #%d (%d)", 0, err);
+		return 0;
+	}
+	/* STEP 4.2 - Initialize the ADC sequence */
+	err = adc_sequence_init_dt(&adc_channel, &sequence);
+	if (err < 0) {
+		LOG_ERR("Could not initalize sequnce");
+		return 0;
 	}
 
+	#define buffer_size 10
+	int power_vals[buffer_size] = {0};
+	int count_idx = 0;
+	int avg_power = 0;
+	int last_mv = -1;
+	bool buffer_full = 0;
+	while (1) {
+		int val_mv;
+
+		/* STEP 5 - Read a sample from the ADC */
+		err = adc_read(adc_channel.dev, &sequence);
+		if (err < 0) {
+			LOG_ERR("Could not read (%d)", err);
+			continue;
+		}
+		
+
+		val_mv = (int)buf;
+		LOG_INF("ADC reading[%u]: %s, channel %d: Raw: %d", count++, adc_channel.dev->name,
+			adc_channel.channel_id, val_mv);
+
+		/* STEP 6 - Convert raw value to mV*/
+		err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
+		/* conversion to mV may not be supported, skip if not */
+		if (err < 0) {
+			LOG_WRN(" (value in mV not available)\n");
+		} else {
+			LOG_INF("Pre: %d mV, Post: %d mV", val_mv, (val_mv*3)/2);
+		}
+
+		if(buffer_full == 0 && count_idx == buffer_size)
+		{
+			buffer_full = 1;
+		}
+
+		if(count_idx == buffer_size)
+		{
+			count_idx = 0;
+		}
+		// only received one voltage
+		if(last_mv == -1)
+		{
+			last_mv = val_mv;
+		}
+		else
+		{
+			power_vals[count_idx] = ((val_mv*val_mv) - (last_mv*last_mv)) / 2000;
+			count_idx += 1;
+			last_mv = val_mv;
+		}
+
+		if(buffer_full == 1)
+		{
+			int avg_power = 0;
+			for(int i = 0; i < buffer_size; i++)
+			{
+				avg_power += power_vals[i];
+			}
+			avg_power = avg_power / buffer_size;
+			LOG_INF("Avg Power: %d uW", avg_power);
+		}
+		k_sleep(K_MSEC(100));
+	}
 	return 0;
 }

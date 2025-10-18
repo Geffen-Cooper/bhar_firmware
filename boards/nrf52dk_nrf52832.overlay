@@ -1,6 +1,26 @@
 /* STEP 2.1 - Create an overlay file for your board */
 
 /{
+	zephyr,user {
+		io-channels = <&adc 5>;
+	};
+};
+
+&adc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	channel@5 {
+		reg = <5>;
+		zephyr,gain = "ADC_GAIN_1_3";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10)>;
+		zephyr,input-positive = <NRF_SAADC_AIN5>; /* P0.02 for nRF52xx, P0.04 for nRF53xx */
+		zephyr,resolution = <12>;
+	};
+};
+
+/{
     inputs {
         compatible = "gpio-keys";
         bmaint1: bmaint_1 {
@@ -21,7 +41,6 @@
 &uart0 { status = "disabled";}; 
 &spi2 { status = "disabled";};
 &pwm0 { status = "disabled";};
-&adc { status = "disabled";};
 &gpio0 {
 	status = "okay";
 	sense-edge-mask = < 0xffffffff >;
