@@ -1,0 +1,13 @@
+# Target labels
+ bhar
+# Source files and their labels
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/CMakeFiles/bhar
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/CMakeFiles/bhar.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/CMakeFiles/bhar-complete.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/bhar-prefix/src/bhar-stamp/bhar-build.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/bhar-prefix/src/bhar-stamp/bhar-configure.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/bhar-prefix/src/bhar-stamp/bhar-download.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/bhar-prefix/src/bhar-stamp/bhar-install.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/bhar-prefix/src/bhar-stamp/bhar-mkdir.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/bhar-prefix/src/bhar-stamp/bhar-patch.rule
+C:/nordic/bhar/build/_sysbuild/sysbuild/images/bhar-prefix/src/bhar-stamp/bhar-update.rule
