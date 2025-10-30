@@ -18,6 +18,7 @@
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/addr.h>
+#include <zephyr/drivers/adc.h>
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
@@ -30,19 +31,21 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 /* STEP 2.2 - Declare the structure for your custom data  */
 typedef struct adv_mfg_data {
 	uint16_t company_code; /* Company Identifier Code. */
-	uint16_t num_ints; /* Number of times bma400 interrupts (should be once a second) */
+	uint16_t cap_mv; /* Number of times bma400 interrupts (should be once a second) */
 } adv_mfg_data_type;
 
+
+static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
 /* STEP 1 - Create an LE Advertising Parameters variable */
 static const struct bt_le_adv_param *adv_param =
 	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
-			400, /* Min Advertising Interval 250ms (400*0.625ms) */
-			401, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+			4000, /* Min Advertising Interval 250ms (400*0.625ms) */
+			4001, /* Max Advertising Interval 250.625ms (401*0.625ms) */
 			NULL); /* Set to NULL for undirected advertising */
 
 /* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
-static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x00 };
+static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x01 };
 
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
@@ -121,18 +124,21 @@ void thread_read_bma400(void)
 		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
 
 		// // Read one sample
-		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
-		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
+		bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+		LOG_INF("X: %d, Y: %d, Z: %d",acc_data.x, acc_data.y, acc_data.z);
+		// bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
+
+
 
 		// Disable SPI
 		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
-		adv_mfg_data.num_ints += 1; // increment the data count
+		// adv_mfg_data.num_ints += 1; // increment the data count
 
-		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
-		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-		k_sleep(K_MSEC(10)); // wait at least one cycle
-		bt_le_adv_stop(); // stop advertising
+		// bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
+		// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+		// k_sleep(K_MSEC(10)); // wait at least one cycle
+		// bt_le_adv_stop(); // stop advertising
 
 		// One Time Step for LSTM NN
 		// LSTM_ONE_TIME_STEP_BHAR();
@@ -327,12 +333,66 @@ int main(void)
 	gpio_add_callback(int_pin.port, &int_cb_data);
 
 
-	bma400_init(&bma_sensor);
+	int16_t buf;
+	struct adc_sequence sequence = {
+		.buffer = &buf,
+		/* buffer size in bytes, not number of samples */
+		.buffer_size = sizeof(buf),
+		// Optional
+		//.calibrate = true,
+	};
+
+	/* STEP 3.3 - validate that the ADC peripheral (SAADC) is ready */
+	if (!adc_is_ready_dt(&adc_channel)) {
+		LOG_ERR("ADC controller devivce %s not ready", adc_channel.dev->name);
+		return 0;
+	}
+	/* STEP 3.4 - Setup the ADC channel */
+	err = adc_channel_setup_dt(&adc_channel);
+	if (err < 0) {
+		LOG_ERR("Could not setup channel #%d (%d)", 0, err);
+		return 0;
+	}
+	/* STEP 4.2 - Initialize the ADC sequence */
+	err = adc_sequence_init_dt(&adc_channel, &sequence);
+	if (err < 0) {
+		LOG_ERR("Could not initalize sequnce");
+		return 0;
+	}
+
+	bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+	int val_mv;
+	while(1)
+	{
+
+		/* STEP 5 - Read a sample from the ADC */
+		err = adc_read(adc_channel.dev, &sequence);
+		if (err < 0) {
+			LOG_ERR("Could not read (%d)", err);
+		}
+		val_mv = (int)buf;
+		err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
+		// adv_mfg_data.cap_mv = val_mv;
+		adv_mfg_data.cap_mv = val_mv;
+		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
+		k_sleep(K_MSEC(1000));
+	}
+
+
+	// while(1)
+	// {
+	// 	bma400_init(&bma_sensor);
+	// 	// uint8_t my_data;
+	// 	// read_reg_spi(0x80,&my_data,2,NULL);
+	// 	// read_reg_spi(0x80,&my_data,2,NULL);
+	// 	// k_msleep(500);
+	// }
   
 
 	// init_activity();
-	init_fifo_watermark();
+	// init_fifo_watermark();
 	// init_read_lp();
+	
 
 	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
@@ -341,6 +401,7 @@ int main(void)
 	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 	
+	bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
 
 	while(1){
 		k_sleep(K_FOREVER);
