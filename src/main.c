@@ -26,10 +26,8 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
     struct bt_data *ad;
     int ad_len = device_info->adv_data->len;
 
-    LOG_INF("Advertising data (%d bytes): ", ad_len);
-    for (int i = 0; i < ad_len; i++) {
-        LOG_INF("%02X ", device_info->adv_data->data[i]);
-    }
+    // LOG_INF("Advertising data (%d bytes): ", ad_len);
+	LOG_INF("%02X%02X ", device_info->adv_data->data[14],device_info->adv_data->data[13]);
 }
 
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
@@ -44,7 +42,7 @@ static void scan_init(void)
 	struct bt_le_scan_param scan_param = {
 		.type     = BT_LE_SCAN_TYPE_PASSIVE,
 		.interval = BT_GAP_SCAN_FAST_INTERVAL, // 5ms
-		.window   = BT_GAP_SCAN_FAST_WINDOW, // 2.5ms
+		.window   = 0x0055, // 2.5ms
 		.options  = BT_LE_SCAN_OPT_NONE
 	};
 
@@ -69,6 +67,8 @@ static void scan_init(void)
 	if (err) {
 		LOG_INF("Filters cannot be turned on (err %d)\n", err);
 	}
+
+	bt_scan_start(BT_LE_SCAN_TYPE_PASSIVE);
 }
 
 

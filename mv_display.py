@@ -1,61 +1,89 @@
-# file: bleak_bhar_scanner_callback.py
-import asyncio
-import argparse
-from bleak import BleakScanner
+import serial
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from collections import deque
+import time
 
-def _bytes_to_hex(b: bytes) -> str:
-    return b.hex().upper() if b is not None else ""
+# -----------------------
+# Configuration
+# -----------------------
+COM_PORT = 'COM7'
+BAUD_RATE = 115200
+BUFFER_SECONDS = 60
+UPDATE_INTERVAL_MS = 100  # update every 100 ms
 
-def print_adv(device, adv):
-    print("=" * 40)
-    print(f"Address: {device.address}")
-    print(f"Name (device.name): {device.name!r}")
-    print(f"Local name (adv.local_name): {adv.local_name!r}")
-    print(f"RSSI: {adv.rssi} dBm")
-    if adv.tx_power is not None:
-        print(f"TX Power: {adv.tx_power}")
-    if adv.manufacturer_data:
-        print("Manufacturer Data:")
-        for k, v in adv.manufacturer_data.items():
-            print(f"  Company ID 0x{k:04X}: { _bytes_to_hex(v) }")
-    if adv.service_data:
-        print("Service Data:")
-        for uuid, data in adv.service_data.items():
-            print(f"  {uuid}: { _bytes_to_hex(data) }")
-    if adv.service_uuids:
-        print("Service UUIDs:", adv.service_uuids)
-    if getattr(adv, "platform_data", None):
-        print("Platform data:", adv.platform_data)
-    print("=" * 40)
+# -----------------------
+# Initialize serial
+# -----------------------
+ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
 
-def detection_callback(device, advertisement_data):
-    name = advertisement_data.local_name or device.name or ""
-    if name == "BHAR" or "BHAR" in name:
-        print_adv(device, advertisement_data)
+# -----------------------
+# Initialize data buffers
+# -----------------------
+data_buffer = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
+time_buffer = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 
-async def main(duration: float):
-    scanner = BleakScanner(detection_callback)
-    print("Starting BLE scan (looking for name 'BHAR') with 1-second restarts...")
+start_time = time.time()
 
-    start_time = asyncio.get_event_loop().time()
-    while True:
-        await scanner.start()
-        # scan for 1 second
-        await asyncio.sleep(3)
-        await scanner.stop()
+# -----------------------
+# Set up the plot
+# -----------------------
+fig, ax = plt.subplots()
+line, = ax.plot([], [], lw=2, marker='o', markersize=4, linestyle='-')  # add marker='o' for dots
+ax.set_xlim(0, BUFFER_SECONDS)
+ax.set_ylim(2.1, 2.8)  # adjust based on your sensor/data range
+ax.set_xlabel("Time (s)")
+ax.set_ylabel("Voltage on Capacitor")
+ax.set_title("Voltage Over Time")
+ax.axhline(2.2,linestyle='--',c='r',lw=8,alpha=0.2)
+ax.axhline(2.7,linestyle='--',c='g',lw=8,alpha=0.2)
+ax.grid()
 
-        if duration > 0 and (asyncio.get_event_loop().time() - start_time) >= duration:
-            break
-
-    print("Scanner stopped.")
-
-if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Scan BLE advertisements for devices named BHAR")
-    p.add_argument("--duration", "-t", type=float, default=0,
-                   help="Scan duration in seconds. 0 or omitted = run until Ctrl-C")
-    args = p.parse_args()
-
+# -----------------------
+# Update function
+# -----------------------
+def update(frame):
+    # Read line from serial
     try:
-        asyncio.run(main(args.duration))
-    except KeyboardInterrupt:
-        print("Interrupted by user — exiting.")
+        line_data = ser.readline().decode('utf-8').strip()
+        if len(line_data) == 0:
+            return line,
+        line_data = line_data.split('app: ')[1][:4]
+        if line_data:
+            value = float(int(line_data,16))*1.5/1000  # convert to float
+            print(line_data,value)
+            current_time = time.time() - start_time
+            data_buffer.append(value)
+            time_buffer.append(current_time)
+    except Exception as e:
+        print("Error reading serial:", e)
+
+    # Update plot data
+    if time_buffer:
+        x_data = list(time_buffer)
+        y_data = list(data_buffer)
+        line.set_data(x_data, y_data)
+
+        # Sliding X-axis: always show last BUFFER_SECONDS seconds
+        if x_data[-1] > BUFFER_SECONDS:
+            ax.set_xlim(x_data[-1]-BUFFER_SECONDS, x_data[-1])
+        else:
+            ax.set_xlim(0, BUFFER_SECONDS)
+
+        # Optionally auto-scale y-axis:
+        # ax.set_ylim(min(y_data)-0.1, max(y_data)+0.1)
+
+    return line,
+
+
+# -----------------------
+# Animate
+# -----------------------
+ani = animation.FuncAnimation(fig, update, interval=UPDATE_INTERVAL_MS, blit=False)
+
+plt.show()
+
+# -----------------------
+# Clean up on exit
+# -----------------------
+ser.close()
