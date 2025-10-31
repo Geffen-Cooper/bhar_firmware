@@ -139,7 +139,7 @@ void thread_read_bma400(void)
 {
 	static int count = 0;
 	while(1){
-		LOG_INF("In the read thread");
+		LOG_INF("++++++++++ In the read thread ++++++++++");
 		k_sem_take(&bma400_ready, K_FOREVER); // Sleep here if semaphore is at 0
 
 		// Enable SPI
@@ -150,6 +150,7 @@ void thread_read_bma400(void)
 		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
 		// LOG_INF("X: %d, Y: %d, Z: %d",acc_data.x, acc_data.y, acc_data.z);
 		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
+		LOG_INF("Read FIFO Data, disabling BMA");
 
 		// after reading, disable the interrupt and put the bma400 to sleep
 		int_en.type = BMA400_FIFO_WM_INT_EN;
@@ -163,6 +164,12 @@ void thread_read_bma400(void)
 		// update the ble data and advertise
 		// adv_mfg_data.num_ints += 1; // increment the data count
 
+		LOG_INF("Advertising Data");
+		LOG_INF("FIFO Length: %d", fifo_frame.length);
+		for(int i = 0; i < 24; i++)
+		{
+			adv_mfg_data.samples[i] = fifo_frame.data[i];
+		}
 		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
 		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
 		k_sleep(K_MSEC(10)); // wait at least one cycle
@@ -499,6 +506,7 @@ int main(void)
 		return 0;
 	}
 
+	bma400_init(&bma_sensor);
 	init_fifo_watermark();
 
 	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
