@@ -1,0 +1,20 @@
+-we should sample the ADC at 5Hz and do any policy computation
+    1. Sample the ADC and get the mv --> convert to uJ (5*mv^2/1000000) - 41. Store this in the buffer of last 5 measurements
+    2. Compute cur minus last energy diff and store in buffer.
+    3. Then compute average energy harvested by subtracting cur minus oldest divided by time (since its one second, its just subtraction)
+    4. Finally, get the policy threshold whic is parameter*energy + parameter*avg_harvested
+    5. Also store the time since sent last. Initialize to 0.
+    6. If the time since we last sent is greater than threshold, then we send.
+    7. To keep track of time, we just increment the count of ADC interrupt
+
+
+    If the policy returns true, we need to increment a semaphore which triggers a thread to read the bma and advertise.
+
+    We need to make sure that if we decided to read the bma, to edit how we compute average energy harvested
+    -what we can do is check if we have read the adc since the last send time
+        -if we have not, that means this is the first sample
+
+    if first_adc
+     first_adc = 0
+    else
+     ediff=e1-e0

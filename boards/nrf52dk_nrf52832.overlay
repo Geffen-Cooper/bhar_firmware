@@ -2,7 +2,7 @@
 
 /{
 	zephyr,user {
-		io-channels = <&adc 0>;
+		io-channels = <&adc 5>;
 	};
 };
 
@@ -10,12 +10,12 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
-	channel@0 {
-		reg = <0>;
+	channel@5 {
+		reg = <5>;
 		zephyr,gain = "ADC_GAIN_1_3";
 		zephyr,reference = "ADC_REF_INTERNAL";
 		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10)>;
-		zephyr,input-positive = <NRF_SAADC_AIN0>; /* P0.02 for nRF52xx, P0.04 for nRF53xx */
+		zephyr,input-positive = <NRF_SAADC_AIN5>; /* P0.02 for nRF52xx, P0.04 for nRF53xx */
 		zephyr,resolution = <12>;
 	};
 };
@@ -25,7 +25,7 @@
     inputs {
         compatible = "gpio-keys";
         bmaint1: bmaint_1 {
-            gpios = <&gpio0 4 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+            gpios = <&gpio0 3 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
             label = "BMA400 Interrupt 1";
         };
     };
@@ -52,7 +52,7 @@
  pinctrl-0 = <&spi1_default>;
  pinctrl-1 = <&spi1_sleep>;
  pinctrl-names = "default", "sleep";
- cs-gpios = <&gpio0 8 GPIO_ACTIVE_LOW>;
+ cs-gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;
  bma400: bma400@0 {
  compatible = "bosch,bma4xx";
  reg = <0>;
@@ -63,16 +63,16 @@
 &pinctrl {
  spi1_default: spi1_default {
  group1 {
- psels = <NRF_PSEL(SPIM_SCK, 0, 7)>, 
- <NRF_PSEL(SPIM_MOSI, 0, 5)>,
- <NRF_PSEL(SPIM_MISO, 0, 6)>;
+ psels = <NRF_PSEL(SPIM_SCK, 0, 6)>, 
+ <NRF_PSEL(SPIM_MOSI, 0, 4)>,
+ <NRF_PSEL(SPIM_MISO, 0, 5)>;
  };
  };
  spi1_sleep: spi1_sleep {
  group1 {
- psels = <NRF_PSEL(SPIM_SCK, 0, 7)>,
- <NRF_PSEL(SPIM_MOSI, 0, 5)>,
- <NRF_PSEL(SPIM_MISO, 0, 6)>;
+ psels = <NRF_PSEL(SPIM_SCK, 0, 6)>,
+ <NRF_PSEL(SPIM_MOSI, 0, 4)>,
+ <NRF_PSEL(SPIM_MISO, 0, 5)>;
  low-power-enable;
  };
  };
