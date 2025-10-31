@@ -49,6 +49,7 @@ uint16_t current_time = 0;
 uint8_t to_send_flag = 0;
 uint16_t theta_e = 5221;
 uint16_t theta_p = 9829;
+uint8_t read_once = 1;
 
 /* STEP 1 - Create an LE Advertising Parameters variable */
 static const struct bt_le_adv_param *adv_param =
@@ -341,7 +342,6 @@ void thread_run_policy(void)
 {
 	while(1)
 	{
-		LOG_INF("In the read thread");
 		k_sem_take(&run_policy, K_FOREVER); // Sleep here if semaphore is at 0
 
 		static int val_mv;
@@ -426,7 +426,8 @@ void thread_run_policy(void)
 		LOG_INF("\t Current E: %d > 100?",energy_vals[4]);
 		LOG_INF("\t Current time - last sent: %d - %d = %d", current_time, last_send_time, current_time - last_send_time);
 		LOG_INF("\t tau: %d",thresh);
-		if( (energy_vals[4] > 100) && ( (current_time - last_send_time) > thresh) )
+		// if( (energy_vals[4] > 100) && ( (current_time - last_send_time) > thresh) && (read_once == 1) )
+		if(read_once == 1)
 		{
 			// to_send_flag = 1;
 			// trigger bma to start reading
@@ -435,6 +436,7 @@ void thread_run_policy(void)
 
 			bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
 			bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+			read_once = 0;
 		}
 		current_time += 1;
 	}
@@ -512,7 +514,13 @@ int main(void)
 	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
-	k_timer_start(&timer0, K_MSEC(200), K_MSEC(200));
+	// k_timer_start(&timer0, K_MSEC(200), K_MSEC(200));
+
+
+	while(1)
+	{
+		k_sleep(K_FOREVER);
+	}
 
 	return 0;
 }
