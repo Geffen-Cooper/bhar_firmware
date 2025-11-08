@@ -18,7 +18,6 @@
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/addr.h>
-#include <zephyr/drivers/adc.h>
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
@@ -31,51 +30,23 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 /* STEP 2.2 - Declare the structure for your custom data  */
 typedef struct adv_mfg_data {
 	uint16_t company_code; /* Company Identifier Code. */
-	uint8_t samples[24];
+	uint16_t num_ints; /* Number of times bma400 interrupts (should be once a second) */
 } adv_mfg_data_type;
 
-
-
-static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
-int16_t buf;
-uint8_t just_filled = 0;
-struct adc_sequence sequence;
-uint16_t energy_vals[5] = {0};
-uint16_t energy_harvested[5] = {0};
-uint8_t first_e_harvest = 1;
-uint8_t buffer_idx = 0;
-uint16_t last_send_time = 0;
-uint16_t current_time = 0;
-uint8_t to_send_flag = 0;
-uint16_t theta_e = 5221;
-uint16_t theta_p = 9829;
-uint8_t read_once = 1;
 
 /* STEP 1 - Create an LE Advertising Parameters variable */
 static const struct bt_le_adv_param *adv_param =
 	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
-			1600, /* Min Advertising Interval 250ms (400*0.625ms) */
-			1601, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+			400, /* Min Advertising Interval 250ms (400*0.625ms) */
+			401, /* Max Advertising Interval 250.625ms (401*0.625ms) */
 			NULL); /* Set to NULL for undirected advertising */
 
 /* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
-// static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x01 };
-// static adv_mfg_data_type adv_mfg_data = {
-//     .company_code = COMPANY_ID_CODE,
-//     .samples = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
-//                  0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
-//                  0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12,
-//                  0x13, 0x14, 0x15, 0x16, 0x17, 0x18 }
-// };
-static adv_mfg_data_type adv_mfg_data = {
-    .company_code = COMPANY_ID_CODE,
-    .samples = { 0x01, 0x02, 0x03, 0x04 }
-};
+static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x00 };
 
-// TODO: I think this payload is too big, need to maybe remove or shorten the name
 static const struct bt_data ad[] = {
-	// BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
-	// BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 	/* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
 	BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
 };
@@ -83,9 +54,7 @@ static const struct bt_data ad[] = {
 // threads
 #define STACKSIZE 1024
 #define THREAD_READ_BMA_PRIORITY 7
-#define THREAD_RUN_POLICY_PRIORITY 8
 K_SEM_DEFINE(bma400_ready, 0, 1);
-K_SEM_DEFINE(run_policy, 0, 1);
 
 // SPI
 #define SPIOP	SPI_WORD_SET(8) | SPI_TRANSFER_MSB
@@ -100,7 +69,7 @@ static struct gpio_callback int_cb_data;
 // BMA400
 #define BMA400_REG_FIFO_CONFIG_1                  UINT8_C(0x27)
 #define FIFOINTER 3
-#define FIFO_SAMPLES 8 //25 // number of samples for fifo content, 8 samples is 24 bytes
+#define FIFO_SAMPLES 25 // number of samples for fifo content
 #define FIFO_WATERMARK_LEVEL    UINT16_C(FIFO_SAMPLES*4) // 4 bytes per frame (XYZ+header)
 #define FIFO_FULL_SIZE          UINT16_C(1024)
 #define FIFO_SIZE               (FIFO_FULL_SIZE + BMA400_FIFO_BYTES_OVERREAD)
@@ -129,7 +98,6 @@ struct bma400_fifo_data fifo_frame;
 struct bma400_device_conf fifo_conf;
 struct bma400_sensor_conf conf;
 uint8_t fifo_buff[FIFO_SIZE] = { 0 };
-struct bma400_fifo_sensor_data accel_data[FIFO_ACCEL_FRAME_COUNT] = { { 0 } };
 
 struct bma400_sensor_conf settings;
 
@@ -143,44 +111,28 @@ void bma_int_handler(const struct device *dev, struct gpio_callback *cb, uint32_
 
 void thread_read_bma400(void)
 {
+	static int count = 0;
 	while(1){
-		LOG_INF("+++ In the read thread +++");
+		LOG_INF("In the read thread");
 		k_sem_take(&bma400_ready, K_FOREVER); // Sleep here if semaphore is at 0
 
 		// Enable SPI
 		const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
 
-		// read data from bma400 fifo
-		bma400_get_fifo_data(&fifo_frame, &bma_sensor);
-		uint16_t accel_frames_req = FIFO_SAMPLES;
-		bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
-		LOG_INF("Read FIFO Data, disabling BMA");
-
-		// after reading, disable the interrupt and put the bma400 to sleep
-		// int_en.type = BMA400_FIFO_WM_INT_EN;
-		// int_en.conf = BMA400_DISABLE;
-		// int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-		// bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
+		// // Read one sample
+		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
 
 		// Disable SPI
 		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
-		LOG_INF("Advertising Data");
-		LOG_INF("FIFO Length: %d", fifo_frame.length);
-		for(int i = 0; i < 8; i++)
-		{
-			adv_mfg_data.samples[i*3] = accel_data[i].x;
-			adv_mfg_data.samples[i*3+1] = accel_data[i].y;
-			adv_mfg_data.samples[i*3+2] = accel_data[i].z;
-		}
+		adv_mfg_data.num_ints += 1; // increment the data count
+
 		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
 		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-		k_sleep(K_MSEC(20)); // wait at least one cycle
+		k_sleep(K_MSEC(10)); // wait at least one cycle
 		bt_le_adv_stop(); // stop advertising
-
-		// last_send_time = current_time;
-		// first_e_harvest = 1;
 
 		// One Time Step for LSTM NN
 		// LSTM_ONE_TIME_STEP_BHAR();
@@ -333,122 +285,6 @@ void init_read_lp()
 	bma400_enable_interrupt(&int_en, 1, &bma_sensor);
 }
 
-
-static void timer0_handler(struct k_timer *dummy)
-{
-	// set the semaphore
-	k_sem_give(&run_policy);
-}
-
-
-void thread_run_policy(void)
-{
-	while(1)
-	{
-		k_sem_take(&run_policy, K_FOREVER); // Sleep here if semaphore is at 0
-
-		static int val_mv;
-		// 1. Read the ADC and convert to uJ
-		LOG_INF("---------- Time: %d ----------",current_time);
-		int8_t err = adc_read(adc_channel.dev, &sequence);
-		if (err < 0) {
-			LOG_ERR("Could not read (%d)", err);
-		}
-		val_mv = (int)buf;
-		err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
-		uint16_t energy_val = 5*val_mv*val_mv/1000000 - 41;
-		LOG_INF("1. Read ADC: %d mv, %d uJ", val_mv, energy_val);
-
-		// 2. write to buffer
-		if(buffer_idx == 5)
-		{
-			// When the buffer is full, we shift everything left by one, and set the last index as newest val
-			for(int buf_i = 0; buf_i < 4; buf_i++)
-			{
-				energy_vals[buf_i] = energy_vals[buf_i+1];
-			}
-			energy_vals[4] = energy_val;
-
-			// if we just sent, wait an iteration
-			if(first_e_harvest == 1)
-			{
-				first_e_harvest = 0;
-			}
-			else
-			{
-				if(just_filled == 1)
-				{
-					// e_h[4] = e[5]-e[4] (e[4]-e[3])
-					energy_harvested[buffer_idx-1] = energy_vals[4] - energy_vals[3];
-				}
-				else
-				{
-					for(int buf_i = 0; buf_i < 4; buf_i++)
-					{
-						energy_harvested[buf_i] = energy_harvested[buf_i+1];
-					}
-					energy_harvested[buffer_idx-1] = energy_vals[4] - energy_vals[3];
-				}
-			}
-			
-		}
-		else
-		{
-			if(first_e_harvest == 1)
-			{
-				first_e_harvest = 0;
-			}
-			else
-			{
-				// e_h[0] = e[1]-e[0], e_h[1] = e[2]-e[1], e_h[2] = e[3]-e[2], e_h[3] = e[4]-e[3]
-				energy_harvested[buffer_idx-1] = energy_vals[buffer_idx] - energy_vals[buffer_idx-1];
-			}
-			energy_vals[buffer_idx] = energy_val;
-			buffer_idx += 1;
-			if(buffer_idx == 5)
-			{
-				just_filled = 1;
-			}
-		}
-		LOG_INF("2. Latest Energy: %d, %d, %d, %d, %d. Latest Harvested:  %d, %d, %d, %d, %d", energy_vals[0], energy_vals[1], energy_vals[2], energy_vals[3], energy_vals[4], energy_harvested[0], energy_harvested[1], energy_harvested[2], energy_harvested[3], energy_harvested[4]);
-		// adv_mfg_data.cap_mv = val_mv;
-		// adv_mfg_data.cap_mv = val_mv;
-
-		// 3. Get average energy harvested
-		uint16_t avg_energy_harvested = 0;
-		// implicitly divide by 1 since one second, this estimates uW or uJ harvested per second
-		for(int buf_i = 0; buf_i < 4; buf_i++)
-		{
-			avg_energy_harvested += energy_harvested[buf_i];
-		}
-		LOG_INF("3. Avg Energy Harvested (average power): %d uW", avg_energy_harvested);
-
-		// 4. compute policy
-		uint16_t thresh = theta_e*energy_vals[4] + theta_p*avg_energy_harvested;
-		LOG_INF("4. Run Policy.");
-		LOG_INF("\t Current E: %d > 100?",energy_vals[4]);
-		LOG_INF("\t Current time - last sent: %d - %d = %d", current_time, last_send_time, current_time - last_send_time);
-		LOG_INF("\t tau: %d",thresh);
-		// if( (energy_vals[4] > 100) && ( (current_time - last_send_time) > thresh) && (read_once == 1) )
-		if(read_once == 1)
-		{
-			// to_send_flag = 1;
-			// trigger bma to start reading
-			// int_en.type = BMA400_FIFO_WM_INT_EN;
-			// int_en.conf = BMA400_ENABLE;
-
-			// bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
-			// bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-			read_once = 0;
-		}
-		current_time += 1;
-	}
-}
-
-K_THREAD_DEFINE(thread_run_policy_id, STACKSIZE, thread_run_policy, NULL, NULL, NULL, THREAD_RUN_POLICY_PRIORITY, 0, 0);
-K_TIMER_DEFINE(timer0, timer0_handler, NULL);
-
-
 int main(void)
 {
 	int err;
@@ -490,40 +326,23 @@ int main(void)
 	/* STEP 7 - Add the callback function by calling gpio_add_callback()   */
 	gpio_add_callback(int_pin.port, &int_cb_data);
 
-	sequence.buffer = &buf;
-	sequence.buffer_size = sizeof(buf);
-
-	/* STEP 3.3 - validate that the ADC peripheral (SAADC) is ready */
-	if (!adc_is_ready_dt(&adc_channel)) {
-		LOG_ERR("ADC controller devivce %s not ready", adc_channel.dev->name);
-		return 0;
-	}
-	/* STEP 3.4 - Setup the ADC channel */
-	err = adc_channel_setup_dt(&adc_channel);
-	if (err < 0) {
-		LOG_ERR("Could not setup channel #%d (%d)", 0, err);
-		return 0;
-	}
-	/* STEP 4.2 - Initialize the ADC sequence */
-	err = adc_sequence_init_dt(&adc_channel, &sequence);
-	if (err < 0) {
-		LOG_ERR("Could not initalize sequnce");
-		return 0;
-	}
 
 	bma400_init(&bma_sensor);
-	// init_fifo_watermark();
+  
+
+	// init_activity();
+	init_fifo_watermark();
+	// init_read_lp();
 
 	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
-	bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+	// Do not disable GPIO, need it for interrupt
+	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
+	
 
-	// k_timer_start(&timer0, K_MSEC(200), K_MSEC(200));
-
-
-	while(1)
-	{
+	while(1){
 		k_sleep(K_FOREVER);
 	}
 
