@@ -12,7 +12,7 @@ COM_PORT = 'COM7'
 BAUD_RATE = 115200
 BUFFER_SECONDS = 60
 UPDATE_INTERVAL_MS = 100  # update every 100 ms
-HIST_BINS = 10  # number of bins in histogram
+HIST_BINS = 20  # number of bins in histogram
 MAX_SAMPLES = 1000  # number of inter-arrival samples to keep
 
 # -----------------------
@@ -50,8 +50,10 @@ def update(frame):
         now = time.time()
         if last_packet_time is not None:
             delta_t = (now - last_packet_time) * 1000.0  # ms
-            arrival_deltas.append(delta_t)
+            if delta_t > 600 and delta_t < 10000:
+                arrival_deltas.append(delta_t)
         last_packet_time = now
+        print(line_data,delta_t)
 
     except Exception as e:
         print("Error reading serial:", e)
