@@ -125,8 +125,8 @@ void thread_read_bma400(void)
 
 		// // Read one sample
 		bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
-		LOG_INF("X: %d, Y: %d, Z: %d",acc_data.x, acc_data.y, acc_data.z);
-		// bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
+		// LOG_INF("X: %d, Y: %d, Z: %d",acc_data.x, acc_data.y, acc_data.z);
+		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
 
 
 
@@ -360,23 +360,28 @@ int main(void)
 		return 0;
 	}
 
-	bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-	int val_mv;
-	while(1)
-	{
+	LOG_INF("====================== APP START=======***************************");
+	bma400_init(&bma_sensor);
+	// init_read_lp();
+	init_fifo_watermark();
 
-		/* STEP 5 - Read a sample from the ADC */
-		err = adc_read(adc_channel.dev, &sequence);
-		if (err < 0) {
-			LOG_ERR("Could not read (%d)", err);
-		}
-		val_mv = (int)buf;
-		err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
-		// adv_mfg_data.cap_mv = val_mv;
-		adv_mfg_data.cap_mv = val_mv;
-		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
-		k_sleep(K_MSEC(1000));
-	}
+	// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+	// int val_mv;
+	// while(1)
+	// {
+
+	// 	/* STEP 5 - Read a sample from the ADC */
+	// 	err = adc_read(adc_channel.dev, &sequence);
+	// 	if (err < 0) {
+	// 		LOG_ERR("Could not read (%d)", err);
+	// 	}
+	// 	val_mv = (int)buf;
+	// 	err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
+	// 	// adv_mfg_data.cap_mv = val_mv;
+	// 	adv_mfg_data.cap_mv = val_mv;
+	// 	bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
+	// 	k_sleep(K_MSEC(1000));
+	// }
 
 
 	// while(1)
@@ -401,10 +406,14 @@ int main(void)
 	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 	
-	bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+	// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
 
 	while(1){
 		k_sleep(K_FOREVER);
+		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+		// LOG_INF("----------X: %d, Y: %d, Z: %d",acc_data.x, acc_data.y, acc_data.z);
+		// k_sleep(K_MSEC(500));
+		// LOG_INF("====================== APP START=======***************************");
 	}
 
 	return 0;
