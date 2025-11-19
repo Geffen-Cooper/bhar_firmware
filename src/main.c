@@ -123,15 +123,33 @@ void thread_read_bma400(void)
 		const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
 
-		// // Read one sample
-		bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
-		// LOG_INF("X: %d, Y: %d, Z: %d",acc_data.x, acc_data.y, acc_data.z);
-		bma400_get_fifo_data(&fifo_frame, &bma_sensor); // read data from bma400 fifo
+		// read data from bma400 fifo
+		bma400_get_fifo_data(&fifo_frame, &bma_sensor);
+		uint16_t accel_frames_req = FIFO_SAMPLES;
+		bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
+		// LOG_INF("Read FIFO Data, disabling BMA");
 
-
+		// after reading, disable the interrupt and put the bma400 to sleep
+		int_en.type = BMA400_FIFO_WM_INT_EN;
+		int_en.conf = BMA400_DISABLE;
+		int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+		bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
 
 		// Disable SPI
 		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+
+		// LOG_INF("Advertising Data");
+		// LOG_INF("FIFO Length: %d", fifo_frame.length);
+		for(int i = 0; i < 8; i++)
+		{
+			adv_mfg_data.samples[i*3] = accel_data[i].x;
+			adv_mfg_data.samples[i*3+1] = accel_data[i].y;
+			adv_mfg_data.samples[i*3+2] = accel_data[i].z;
+		}
+		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
+		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+		k_sleep(K_MSEC(20)); // wait at least one cycle
+		bt_le_adv_stop(); // stop advertising
 
 		// adv_mfg_data.num_ints += 1; // increment the data count
 
