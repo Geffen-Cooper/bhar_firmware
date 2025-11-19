@@ -57,7 +57,9 @@ static const struct bt_data ad[] = {
 // threads
 #define STACKSIZE 1024
 #define THREAD_READ_BMA_PRIORITY 7
+#define THREAD_RUN_POLICY_PRIORITY 6
 K_SEM_DEFINE(bma400_ready, 0, 1);
+K_SEM_DEFINE(run_policy, 0, 1);
 
 // SPI
 #define SPIOP	SPI_WORD_SET(8) | SPI_TRANSFER_MSB
@@ -333,6 +335,13 @@ void thread_run_policy(void)
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
         LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*4);
+		if(val_mv > 1600)
+		{
+			int_en.type = BMA400_FIFO_WM_INT_EN;
+			int_en.conf = BMA400_ENABLE;
+			bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
+			bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+		}
         // // continue;
         // uint16_t energy_val = 5*val_mv*val_mv/1000000 - 41;
         // LOG_INF("1. Read ADC: %d mv, %d uJ", val_mv, energy_val);
@@ -508,6 +517,8 @@ int main(void)
 	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 	
+	k_timer_start(&timer0, K_MSEC(200), K_MSEC(200));
+
 	while(1){
 		k_sleep(K_FOREVER);
 	}
