@@ -309,6 +309,122 @@ void init_read_lp()
 	bma400_enable_interrupt(&int_en, 1, &bma_sensor);
 }
 
+
+
+static void timer0_handler(struct k_timer *dummy)
+{
+    // set the semaphore
+    k_sem_give(&run_policy);
+}
+
+void thread_run_policy(void)
+{
+    while(1)
+    {
+        k_sem_take(&run_policy, K_FOREVER); // Sleep here if semaphore is at 0
+        static int val_mv;
+        // 1. Read the ADC and convert to uJ
+        LOG_INF("---------- Time: %d ----------",current_time);
+        int8_t err = adc_read(adc_channel.dev, &sequence);
+        if (err < 0) {
+            LOG_ERR("Could not read (%d)", err);
+        }
+        val_mv = (int)buf;
+        err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
+        // val_mv = val_mv*4; // scale by voltage divider ratio
+        LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*4);
+        // // continue;
+        // uint16_t energy_val = 5*val_mv*val_mv/1000000 - 41;
+        // LOG_INF("1. Read ADC: %d mv, %d uJ", val_mv, energy_val);
+        // // 2. write to buffer
+        // if(buffer_idx == 5)
+        // {
+        //  // When the buffer is full, we shift everything left by one, and set the last index as newest val
+        //  for(int buf_i = 0; buf_i < 4; buf_i++)
+        //  {
+        //      energy_vals[buf_i] = energy_vals[buf_i+1];
+        //  }
+        //  energy_vals[4] = energy_val;
+        //  // if we just sent, wait an iteration
+        //  if(first_e_harvest == 1)
+        //  {
+        //      first_e_harvest = 0;
+        //  }
+        //  else
+        //  {
+        //      if(just_filled == 1)
+        //      {
+        //          // e_h[4] = e[5]-e[4] (e[4]-e[3])
+        //          energy_harvested[buffer_idx-1] = energy_vals[4] - energy_vals[3];
+        //      }
+        //      else
+        //      {
+        //          for(int buf_i = 0; buf_i < 4; buf_i++)
+        //          {
+        //              energy_harvested[buf_i] = energy_harvested[buf_i+1];
+        //          }
+        //          energy_harvested[buffer_idx-1] = energy_vals[4] - energy_vals[3];
+        //      }
+        //  }
+            
+        // }
+        // else
+        // {
+        //  if(first_e_harvest == 1)
+        //  {
+        //      first_e_harvest = 0;
+        //  }
+        //  else
+        //  {
+        //      // e_h[0] = e[1]-e[0], e_h[1] = e[2]-e[1], e_h[2] = e[3]-e[2], e_h[3] = e[4]-e[3]
+        //      energy_harvested[buffer_idx-1] = energy_vals[buffer_idx] - energy_vals[buffer_idx-1];
+        //  }
+        //  energy_vals[buffer_idx] = energy_val;
+        //  buffer_idx += 1;
+        //  if(buffer_idx == 5)
+        //  {
+        //      just_filled = 1;
+        //  }
+        // }
+        // // LOG_INF("2. Latest Energy: %d, %d, %d, %d, %d. Latest Harvested:  %d, %d, %d, %d, %d", energy_vals[0], energy_vals[1], energy_vals[2], energy_vals[3], energy_vals[4], energy_harvested[0], energy_harvested[1], energy_harvested[2], energy_harvested[3], energy_harvested[4]);
+        // // adv_mfg_data.cap_mv = val_mv;
+        // // adv_mfg_data.cap_mv = val_mv;
+        // // 3. Get average energy harvested
+        // uint16_t avg_energy_harvested = 0;
+        // // implicitly divide by 1 since one second, this estimates uW or uJ harvested per second
+        // for(int buf_i = 0; buf_i < 4; buf_i++)
+        // {
+        //  avg_energy_harvested += energy_harvested[buf_i];
+        // }
+        // // LOG_INF("3. Avg Energy Harvested (average power): %d uW", avg_energy_harvested);
+        // // 4. compute policy
+        // uint16_t thresh = theta_e*energy_vals[4] + theta_p*avg_energy_harvested;
+        // // LOG_INF("4. Run Policy.");
+        // // LOG_INF("\t Current E: %d > 100?",energy_vals[4]);
+        // LOG_INF("\t Current time - last sent: %d - %d = %d", current_time, last_send_time, current_time - last_send_time);
+        // // LOG_INF("\t tau: %d",thresh);
+        // // if( (energy_vals[4] > 100) && ( (current_time - last_send_time) > thresh) && (read_once == 1) )
+        // // if(read_once == 1)
+        // if( (4300 < val_mv) && (can_read)) // 4.5V
+        // {
+        //  // to_send_flag = 1;
+        //  // trigger bma to start reading
+        //  int_en.type = BMA400_FIFO_WM_INT_EN;
+        //  int_en.conf = BMA400_ENABLE;
+        //  bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
+        //  bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+        //  read_once = 0;
+        //  can_read = 0; // can only read after last packet sent
+        // }
+        // current_time += 1;
+    }
+}
+K_THREAD_DEFINE(thread_run_policy_id, STACKSIZE, thread_run_policy, NULL, NULL, NULL, THREAD_RUN_POLICY_PRIORITY, 0, 0);
+K_TIMER_DEFINE(timer0, timer0_handler, NULL);
+
+
+
+
 int main(void)
 {
 	int err;
@@ -383,38 +499,6 @@ int main(void)
 	// init_read_lp();
 	init_fifo_watermark();
 
-	// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-	// int val_mv;
-	// while(1)
-	// {
-
-	// 	/* STEP 5 - Read a sample from the ADC */
-	// 	err = adc_read(adc_channel.dev, &sequence);
-	// 	if (err < 0) {
-	// 		LOG_ERR("Could not read (%d)", err);
-	// 	}
-	// 	val_mv = (int)buf;
-	// 	err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
-	// 	// adv_mfg_data.cap_mv = val_mv;
-	// 	adv_mfg_data.cap_mv = val_mv;
-	// 	bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
-	// 	k_sleep(K_MSEC(1000));
-	// }
-
-
-	// while(1)
-	// {
-	// 	bma400_init(&bma_sensor);
-	// 	// uint8_t my_data;
-	// 	// read_reg_spi(0x80,&my_data,2,NULL);
-	// 	// read_reg_spi(0x80,&my_data,2,NULL);
-	// 	// k_msleep(500);
-	// }
-  
-
-	// init_activity();
-	// init_fifo_watermark();
-	// init_read_lp();
 	
 
 	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
@@ -424,14 +508,8 @@ int main(void)
 	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 	
-	// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-
 	while(1){
 		k_sleep(K_FOREVER);
-		// bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
-		// LOG_INF("----------X: %d, Y: %d, Z: %d",acc_data.x, acc_data.y, acc_data.z);
-		// k_sleep(K_MSEC(500));
-		// LOG_INF("====================== APP START=======***************************");
 	}
 
 	return 0;
