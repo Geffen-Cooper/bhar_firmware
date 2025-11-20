@@ -179,7 +179,8 @@ void thread_read_bma400(void)
 
 		// for(int i = 0; i < 8; i++)
 		// {
-		// 	LOG_INF("X: %04X, Y: %04X, Z: %04X",accel_data[i].x,accel_data[i].y,accel_data[i].z);
+		// 	LOG_INF("X: %02X, Y: %02X, Z: %02X",accel_data[i].x,accel_data[i].y,accel_data[i].z);
+		// 	LOG_INF("X: %02X, Y: %02X, Z: %02X",adv_mfg_data.samples[i*3],adv_mfg_data.samples[i*3+1],adv_mfg_data.samples[i*3+2]);
 		// }
 
 		// adv_mfg_data.num_ints += 1; // increment the data count
