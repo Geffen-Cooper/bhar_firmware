@@ -155,16 +155,32 @@ void thread_read_bma400(void)
 
 		// LOG_INF("Advertising Data");
 		// LOG_INF("FIFO Length: %d", fifo_frame.length);
+
+		// our accelerometer data is implicitly 8 bits but stored as 16 bits
+		// we have 12 bit on the acceleometer 0000 1234 5678 ABCD
+		// we grab the top 8 bit (1234 5678) -> 0000 1234 5678 0000, bottom 4 get zeroed out
+		// then when we put convert into int16_t we have 0000 1234 5678 0000 (top 4 coulf be 1111 if negative)
+		// even though we really only have 8 bits of resolution
+		// so when we want to send 8 bits, we need to shift right 4 and grab bottom 8 bits
+		// then when we receive, we will shift left back 4
+		// Ex: 0x01F0 = 512 = 1G. Even though 512 cannot be stored in 8 bits, the implicit resolution is 8 bits since bottom 4 always 0
+		// i.e. only the middle two hex digits will actually change for positive numbers
+		// 0xFE00 = -512 = -1G
 		for(int i = 0; i < 8; i++)
 		{
-			adv_mfg_data.samples[i*3] = accel_data[i].x;
-			adv_mfg_data.samples[i*3+1] = accel_data[i].y;
-			adv_mfg_data.samples[i*3+2] = accel_data[i].z;
+			adv_mfg_data.samples[i*3] = (accel_data[i].x >> 4) & 0xFF; // shift right by 4 and select first 8 bits, on RX we will shift back left 4 bits
+			adv_mfg_data.samples[i*3+1] = (accel_data[i].y >> 4) & 0xFF;
+			adv_mfg_data.samples[i*3+2] = (accel_data[i].z >> 4) & 0xFF;
 		}
 		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
 		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
 		k_sleep(K_MSEC(20)); // wait at least one cycle
 		bt_le_adv_stop(); // stop advertising
+
+		// for(int i = 0; i < 8; i++)
+		// {
+		// 	LOG_INF("X: %04X, Y: %04X, Z: %04X",accel_data[i].x,accel_data[i].y,accel_data[i].z);
+		// }
 
 		// adv_mfg_data.num_ints += 1; // increment the data count
 
