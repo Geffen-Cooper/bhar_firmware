@@ -27,7 +27,18 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
     int ad_len = device_info->adv_data->len;
 
     // LOG_INF("Advertising data (%d bytes): ", ad_len);
-	LOG_INF("%02X%02X ", device_info->adv_data->data[14],device_info->adv_data->data[13]);
+	// 28 bytes total
+	// first byte is length (says 27)
+	// second byte is type
+	// 2 bytes nordic id
+	// 24 bytes acceleromter data
+	LOG_INF("START");
+	for(int i = 4; i < ad_len; i++)
+	{
+		LOG_INF("%02X", device_info->adv_data->data[i]);
+	} 
+	LOG_INF("END");
+	// LOG_INF("%02X%02X ", device_info->adv_data->data[14],device_info->adv_data->data[13]);
 }
 
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);

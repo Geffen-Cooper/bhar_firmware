@@ -17,7 +17,7 @@ cmake:
      - C:/nordic/bhar/build/_sysbuild/empty.conf
     user-files:
      - C:/nordic/bhar/build/_sysbuild/empty.conf
-  sysbuild: ON
+  sysbuild: true
 version: 0.1.0
 west:
   command: C:\ncs\toolchains\0b393f9e1b\opt\bin\Scripts\west build --build-dir c:/nordic/bhar/build c:/nordic/bhar --pristine --board nrf52dk/nrf52832 --sysbuild --
