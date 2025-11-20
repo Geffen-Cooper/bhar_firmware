@@ -28,36 +28,48 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 /* STEP 2.1 - Declare the Company identifier (Company ID) */
 #define COMPANY_ID_CODE 0x0059
 
+int16_t buf;
+
 /* STEP 2.2 - Declare the structure for your custom data  */
 typedef struct adv_mfg_data {
-	uint16_t company_code; /* Company Identifier Code. */
-	uint16_t cap_mv; /* Number of times bma400 interrupts (should be once a second) */
+    uint16_t company_code; /* Company Identifier Code. */
+    uint8_t samples[24];
 } adv_mfg_data_type;
+
+struct adc_sequence sequence;
 
 
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
-/* STEP 1 - Create an LE Advertising Parameters variable */
 static const struct bt_le_adv_param *adv_param =
-	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
-			4000, /* Min Advertising Interval 250ms (400*0.625ms) */
-			4001, /* Max Advertising Interval 250.625ms (401*0.625ms) */
-			NULL); /* Set to NULL for undirected advertising */
-
+    BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
+            32, /* Min Advertising Interval 250ms (400*0.625ms) */
+            33, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+            NULL); /* Set to NULL for undirected advertising */
 /* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
-static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x01 };
-
-static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
-	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
-	/* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
-	BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
+// static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x01 };
+static adv_mfg_data_type adv_mfg_data = {
+    .company_code = COMPANY_ID_CODE,
+    .samples = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+                 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
+                 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12,
+                 0x13, 0x14, 0x15, 0x16, 0x17, 0x18 }
 };
-
+// static adv_mfg_data_type adv_mfg_data = {
+//     .company_code = COMPANY_ID_CODE,
+//     .samples = { 0x01, 0x02, 0x03, 0x04 }
+// };
+// TODO: I think this payload is too big, need to maybe remove or shorten the name
+static const struct bt_data ad[] = {
+    // BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+    // BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+    /* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
+    BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
+};
 // threads
 #define STACKSIZE 1024
 #define THREAD_READ_BMA_PRIORITY 7
-#define THREAD_RUN_POLICY_PRIORITY 6
+#define THREAD_RUN_POLICY_PRIORITY 8
 K_SEM_DEFINE(bma400_ready, 0, 1);
 K_SEM_DEFINE(run_policy, 0, 1);
 
@@ -74,7 +86,7 @@ static struct gpio_callback int_cb_data;
 // BMA400
 #define BMA400_REG_FIFO_CONFIG_1                  UINT8_C(0x27)
 #define FIFOINTER 3
-#define FIFO_SAMPLES 25 // number of samples for fifo content
+#define FIFO_SAMPLES 8 // number of samples for fifo content
 #define FIFO_WATERMARK_LEVEL    UINT16_C(FIFO_SAMPLES*4) // 4 bytes per frame (XYZ+header)
 #define FIFO_FULL_SIZE          UINT16_C(1024)
 #define FIFO_SIZE               (FIFO_FULL_SIZE + BMA400_FIFO_BYTES_OVERREAD)
@@ -104,6 +116,7 @@ struct bma400_device_conf fifo_conf;
 struct bma400_sensor_conf conf;
 uint8_t fifo_buff[FIFO_SIZE] = { 0 };
 
+struct bma400_fifo_sensor_data accel_data[FIFO_ACCEL_FRAME_COUNT] = { { 0 } };
 struct bma400_sensor_conf settings;
 
 
@@ -261,9 +274,9 @@ void init_fifo_watermark()
 	fifo_frame.length = FIFO_SIZE;
 
 	int_en.type = BMA400_FIFO_WM_INT_EN;
-	int_en.conf = BMA400_ENABLE;
+	int_en.conf = BMA400_DISABLE;
 
-	bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
+	bma400_set_power_mode(BMA400_MODE_LOW_POWER,&bma_sensor);
 	rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
 }
 
@@ -326,7 +339,7 @@ void thread_run_policy(void)
         k_sem_take(&run_policy, K_FOREVER); // Sleep here if semaphore is at 0
         static int val_mv;
         // 1. Read the ADC and convert to uJ
-        LOG_INF("---------- Time: %d ----------",current_time);
+        // LOG_INF("---------- Time: %d ----------",current_time);
         int8_t err = adc_read(adc_channel.dev, &sequence);
         if (err < 0) {
             LOG_ERR("Could not read (%d)", err);
@@ -334,8 +347,8 @@ void thread_run_policy(void)
         val_mv = (int)buf;
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
-        LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*4);
-		if(val_mv > 1600)
+        LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
+		if(val_mv)//(val_mv > 1600)
 		{
 			int_en.type = BMA400_FIFO_WM_INT_EN;
 			int_en.conf = BMA400_ENABLE;

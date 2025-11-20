@@ -5,7 +5,8 @@
     "files.associations": {
         "arm_nnfunctions.h": "c",
         "test_data.h": "c",
-        "config_data.h": "c"
+        "config_data.h": "c",
+        "compare": "c"
     },
     "nrf-connect.applications": [
         "${workspaceFolder}"
