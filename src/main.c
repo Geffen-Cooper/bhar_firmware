@@ -166,11 +166,35 @@ void thread_read_bma400(void)
 		// Ex: 0x01F0 = 512 = 1G. Even though 512 cannot be stored in 8 bits, the implicit resolution is 8 bits since bottom 4 always 0
 		// i.e. only the middle two hex digits will actually change for positive numbers
 		// 0xFE00 = -512 = -1G
+		// to transmit, we need to convert back to raw bytes
+		// 0x0000 -> 0x07F0 (+), 0 -> 2032 by increments of 16
+		// 0x0800 -> 0xFF0 (-), -2048 -> -16 by increments of 16
 		for(int i = 0; i < 8; i++)
 		{
-			adv_mfg_data.samples[i*3] = (accel_data[i].x >> 4) & 0xFF; // shift right by 4 and select first 8 bits, on RX we will shift back left 4 bits
-			adv_mfg_data.samples[i*3+1] = (accel_data[i].y >> 4) & 0xFF;
-			adv_mfg_data.samples[i*3+2] = (accel_data[i].z >> 4) & 0xFF;
+			if(accel_data[i].x < 0)
+			{
+				adv_mfg_data.samples[i*3] = (accel_data[i].x + 4096) >> 4;
+			}
+			else
+			{
+				adv_mfg_data.samples[i*3] = accel_data[i].x  >> 4;
+			}
+			if(accel_data[i].y < 0)
+			{
+				adv_mfg_data.samples[i*3+1] = (accel_data[i].y + 4096) >> 4;
+			}
+			else
+			{
+				adv_mfg_data.samples[i*3+1] = accel_data[i].y  >> 4;
+			}
+			if(accel_data[i].z < 0)
+			{
+				adv_mfg_data.samples[i*3+2] = (accel_data[i].z + 4096) >> 4;
+			}
+			else
+			{
+				adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
+			}
 		}
 		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
 		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
