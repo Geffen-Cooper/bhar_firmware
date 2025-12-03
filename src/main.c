@@ -22,7 +22,15 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 			      			  struct bt_scan_filter_match *filter_match,
 			      			  bool connectable)
 {
-	// Advertising data is in device_info->adv_data
+
+	// char addr_str[BT_ADDR_LE_STR_LEN];
+	// LOG_INF("%02X",filter_match->addr.addr->a.val[0]);
+	// LOG_INF("%02X",filter_match->addr.addr->a.val[1]);
+	// LOG_INF("%02X",filter_match->addr.addr->a.val[2]);
+	// bt_addr_le_to_str(&filter_match->addr.addr, addr_str, sizeof(addr_str));
+
+	// LOG_INF("Matched filtered address: %s", addr_str);
+
     struct bt_data *ad;
     int ad_len = device_info->adv_data->len;
 
@@ -32,7 +40,7 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 	// second byte is type
 	// 2 bytes nordic id
 	// 24 bytes acceleromter data
-	LOG_INF("START");
+	LOG_INF("START%02X",filter_match->addr.addr->a.val[0]);
 	for(int i = 4; i < ad_len; i++)
 	{
 		LOG_INF("%02X", device_info->adv_data->data[i]);
@@ -68,6 +76,14 @@ static void scan_init(void)
 
 	bt_addr_le_t addr;
     err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
+
+	// set a second filter
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AB", "random", &addr);
 	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
 	if (err) {
 		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
