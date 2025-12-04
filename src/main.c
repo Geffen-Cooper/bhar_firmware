@@ -30,6 +30,8 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
 int16_t buf;
 
+bool last_tx_done = true;
+
 /* STEP 2.2 - Declare the structure for your custom data  */
 typedef struct adv_mfg_data {
     uint16_t company_code; /* Company Identifier Code. */
@@ -198,8 +200,9 @@ void thread_read_bma400(void)
 		}
 		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
 		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-		k_sleep(K_MSEC(20)); // wait at least one cycle
+		k_sleep(K_MSEC(10)); // wait at least one cycle
 		bt_le_adv_stop(); // stop advertising
+		last_tx_done = true;
 
 		// for(int i = 0; i < 8; i++)
 		// {
@@ -389,12 +392,13 @@ void thread_run_policy(void)
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
         LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
-		if(val_mv > 1600)
+		if(val_mv > 1600 && last_tx_done == true)
 		{
 			int_en.type = BMA400_FIFO_WM_INT_EN;
 			int_en.conf = BMA400_ENABLE;
 			bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
 			bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+			last_tx_done = false;
 		}
         // // continue;
         // uint16_t energy_val = 5*val_mv*val_mv/1000000 - 41;
