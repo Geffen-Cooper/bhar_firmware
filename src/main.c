@@ -392,7 +392,7 @@ void thread_run_policy(void)
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
         LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
-		if(val_mv > 1600 && last_tx_done == true)
+		if(last_tx_done == true)
 		{
 			int_en.type = BMA400_FIFO_WM_INT_EN;
 			int_en.conf = BMA400_ENABLE;
