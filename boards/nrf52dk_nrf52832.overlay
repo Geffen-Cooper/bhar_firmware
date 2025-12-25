@@ -35,6 +35,20 @@
     };
 };
 
+/{
+	outputs {
+		compatible = "gpio-leds";
+		pmic_hen: h_en {
+			gpios = <&gpio0 16 GPIO_ACTIVE_LOW>;
+			label = "PMIC LDO Enable";
+		};
+	};
+
+	aliases {
+        hen = &pmic_hen;
+    };
+};
+
 /* STEP 2.2 - Change the pin configuration */
 &i2c0 {	status = "disabled";};
 &spi0 {	status = "disabled";};
