@@ -36,16 +36,23 @@
 };
 
 /{
+    /delete-node/ buttons;
+    
 	outputs {
 		compatible = "gpio-leds";
 		pmic_hen: h_en {
-			gpios = <&gpio0 16 GPIO_ACTIVE_LOW>;
+			gpios = <&gpio0 16 GPIO_ACTIVE_HIGH>;
 			label = "PMIC LDO Enable";
 		};
 	};
 
 	aliases {
         hen = &pmic_hen;
+        /delete-property/ sw0;
+		/delete-property/ sw1;
+		/delete-property/ sw2;
+		/delete-property/ sw3;
+        /delete-property/ mcuboot-button0;
     };
 };
 

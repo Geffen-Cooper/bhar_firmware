@@ -85,6 +85,10 @@ uint8_t rx_buffer[128] = {0};
 static const struct gpio_dt_spec int_pin = GPIO_DT_SPEC_GET(int_NODE, gpios);
 static struct gpio_callback int_cb_data;
 
+// PMIC EN GPIO
+#define hen_NODE DT_ALIAS(hen)
+static const struct gpio_dt_spec hen_pin = GPIO_DT_SPEC_GET(hen_NODE, gpios);
+
 // BMA400
 #define BMA400_REG_FIFO_CONFIG_1                  UINT8_C(0x27)
 #define FIFOINTER 3
@@ -392,14 +396,24 @@ void thread_run_policy(void)
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
         LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
-		if(last_tx_done == true)
+		if(val_mv >= 1600 && last_tx_done == true)
 		{
 			int_en.type = BMA400_FIFO_WM_INT_EN;
 			int_en.conf = BMA400_ENABLE;
 			bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
 			bma400_enable_interrupt(&int_en, 1, &bma_sensor);
 			last_tx_done = false;
+			gpio_pin_set_dt(&hen_pin, 1);
 		}
+		// turn off LED to avoid going into cold start mode
+		if(val_mv < 1500)
+		{
+			gpio_pin_set_dt(&hen_pin, 0);
+		}
+		// else
+		// {
+		// 	gpio_pin_set_dt(&hen_pin, 0);
+		// }
         // // continue;
         // uint16_t energy_val = 5*val_mv*val_mv/1000000 - 41;
         // LOG_INF("1. Read ADC: %d mv, %d uJ", val_mv, energy_val);
@@ -523,6 +537,15 @@ int main(void)
 	if (err < 0) {
 		return -1;
 	}
+
+	if (!device_is_ready(hen_pin.port)) {
+		return -1;
+	}
+	err = gpio_pin_configure_dt(&hen_pin, GPIO_OUTPUT_LOW);
+	if (err < 0) {
+		return -1;
+	}
+
 	/* STEP 3 - Configure the interrupt on the button's pin */
 	err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_EDGE_RISING);
 	// err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_LEVEL_ACTIVE);
@@ -569,8 +592,8 @@ int main(void)
 	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 	
-	k_timer_start(&timer0, K_MSEC(200), K_MSEC(200));
-
+	k_timer_start(&timer0, K_MSEC(20), K_MSEC(20));
+	// gpio_pin_set_dt(&hen_pin, 1);
 	while(1){
 		k_sleep(K_FOREVER);
 	}
