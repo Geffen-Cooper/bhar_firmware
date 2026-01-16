@@ -498,7 +498,7 @@ int main(void)
 
 	// Fix the BLE address
 	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AD", "random", &addr);
     err = bt_id_create(&addr, NULL);
 
 	// Enable BLE
