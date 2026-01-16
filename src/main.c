@@ -41,10 +41,13 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 	// 2 bytes nordic id
 	// 24 bytes acceleromter data
 	LOG_INF("START%02X",filter_match->addr.addr->a.val[0]);
-	for(int i = 4; i < ad_len; i++)
-	{
-		LOG_INF("%02X", device_info->adv_data->data[i]);
-	} 
+	// for(int i = 4; i < ad_len; i++)
+	// {
+	// 	LOG_INF("%02X", device_info->adv_data->data[i]);
+	// } 
+	LOG_HEXDUMP_INF(&device_info->adv_data->data[4],
+                ad_len - 4,
+                "DATA");
 	LOG_INF("END");
 	// LOG_INF("%02X%02X ", device_info->adv_data->data[14],device_info->adv_data->data[13]);
 }
@@ -84,6 +87,27 @@ static void scan_init(void)
 
 	// set a second filter
 	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AB", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
+
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AC", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
+
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AD", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
+
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AE", "random", &addr);
 	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
 	if (err) {
 		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
