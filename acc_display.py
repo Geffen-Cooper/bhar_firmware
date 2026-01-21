@@ -10,13 +10,13 @@ import numpy as np
 # -----------------------
 COM_PORT = 'COM7'
 BAUD_RATE = 115200
-BUFFER_SECONDS = 10#60
+BUFFER_SECONDS = 5#60
 UPDATE_INTERVAL_MS = 50  # update every 100 ms
 
 # -----------------------
 # Initialize serial
 # -----------------------
-ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
+ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=0.1)
 
 # -----------------------
 # Initialize data buffers
@@ -52,7 +52,7 @@ start_time = time.time()
 # -----------------------
 # Set up the plot
 # -----------------------
-fig, ax = plt.subplots(4,1,sharex=True)
+fig, ax = plt.subplots(5,1,sharex=True,figsize=(12,7))
 line_x_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='X')  # add marker='o' for dots
 line_y_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='y')  # add marker='o' for dots
 line_z_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
@@ -69,9 +69,9 @@ line_x_4, = ax[3].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',lab
 line_y_4, = ax[3].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Y')  # add marker='o' for dots
 line_z_4, = ax[3].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
 
-# line_x_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='X')  # add marker='o' for dots
-# line_y_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Y')  # add marker='o' for dots
-# line_z_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
+line_x_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='X')  # add marker='o' for dots
+line_y_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Y')  # add marker='o' for dots
+line_z_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
 
 ax[-1].set_xlim(0, BUFFER_SECONDS)
 
@@ -79,34 +79,34 @@ ax[0].set_ylim(-4.5, 4.5)  # adjust based on your sensor/data range
 ax[1].set_ylim(-4.5, 4.5)
 ax[2].set_ylim(-4.5, 4.5)
 ax[3].set_ylim(-4.5, 4.5)
-# ax[4].set_ylim(-4.5, 4.5)
+ax[4].set_ylim(-4.5, 4.5)
 
 ax[-1].set_xlabel("Time (s)")
 
-ax[0].set_ylabel("Accelerometer G's")
+ax[0].set_ylabel("G's")
 ax[0].set_title("Accelerometer Over Time")
 ax[0].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
 ax[0].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[0].grid()
 
-ax[1].set_ylabel("Accelerometer G's")
+ax[1].set_ylabel("G's")
 ax[1].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
 ax[1].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[1].grid()
 
-ax[2].set_ylabel("Accelerometer G's")
+ax[2].set_ylabel("G's")
 ax[2].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
 ax[2].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[2].grid()
 
-ax[3].set_ylabel("Accelerometer G's")
+ax[3].set_ylabel("G's")
 ax[3].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
 ax[3].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[3].grid()
 
-# ax[4].set_ylabel("Accelerometer G's")
-# ax[4].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
-# ax[4].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
+ax[4].set_ylabel("G's")
+ax[4].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
+ax[4].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[4].grid()
 
 # ax[0].legend(loc="center left", bbox_to_anchor=(1, 0.5))
@@ -124,7 +124,7 @@ def update(frame):
         line_data = ser.readline().decode('utf-8').strip()
         # print(line_data)
         if len(line_data) == 0:
-            return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4#, line_x_5,line_y_5, line_z_5
+            return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4, line_x_5,line_y_5, line_z_5
         # else:
         line_data = line_data.split('app: ')[1][:7]
         # if line_data == 'START':
@@ -132,18 +132,58 @@ def update(frame):
             # print(line_data.split('START')[1])
             sensor_id = line_data.split('START')[1]
             print("")
+            # read_bytes = np.zeros(24)
+
+
+            # for i in range(24):
+            #     read_byte = ser.readline().decode('utf-8').strip()
+            #     read_byte = read_byte.split('app: ')[1][:2]
+            #     if read_byte == "ST" or read_byte == "EN":
+            #         return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3
+            #     raw_byte = int(read_byte, 16) << 4
+            #     if raw_byte > 2047:
+            #         read_bytes[i] = raw_byte - 4096
+            #     else:
+            #         read_bytes[i] = raw_byte
+            # read_bytes = read_bytes*8/4096
+
+            data_header = ser.readline()#.decode('utf-8').strip()
+            # data_header = data_header.split('app: ')[1][:4]
+            # print(data_header)
+            data_bytes1 = ser.readline().decode('utf-8').strip()
+            # print(data_bytes)
+            # print(data_bytes.split('|')[0].strip())
+            data_bytes1 = data_bytes1.split('|')[0].strip()
+            data_bytes2 = ser.readline().decode('utf-8').strip()
+            # print(data_bytes)
+            # print(data_bytes.split('|')[0].strip())
+            data_bytes2 = data_bytes2.split('|')[0].strip()
+
+            # print(data_bytes1)
+            # print(data_bytes2)
+            byte_list = (data_bytes1.split() + data_bytes2.split())
+            # print(byte_list)
+            # exit()
+            
             read_bytes = np.zeros(24)
-            for i in range(24):
-                read_byte = ser.readline().decode('utf-8').strip()
-                read_byte = read_byte.split('app: ')[1][:2]
-                if read_byte == "ST" or read_byte == "EN":
-                    return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3
-                raw_byte = int(read_byte, 16) << 4
+
+            for b_i,b in enumerate(byte_list):
+                raw_byte = int(b, 16) << 4
+
                 if raw_byte > 2047:
-                    read_bytes[i] = raw_byte - 4096
+                    value = raw_byte - 4096
                 else:
-                    read_bytes[i] = raw_byte
-            read_bytes = read_bytes*8/4096
+                    value = raw_byte
+
+                read_bytes[b_i] = value
+
+            # final scaling
+            read_bytes = read_bytes * 8 / 4096
+            
+            # print(read_bytes.shape)
+            # exit()
+
+
             # print(read_bytes)
             print("Sensor:",sensor_id)
             print("X:",read_bytes[0::3])
@@ -162,7 +202,7 @@ def update(frame):
                 data_buffer_x_1.extend(list(read_bytes[0::3]))
                 data_buffer_y_1.extend(list(read_bytes[1::3]))
                 data_buffer_z_1.extend(list(read_bytes[2::3]))
-                time_buffer1.extend(list(current_time - np.linspace(0,.32,8)[::-1]))
+                time_buffer1.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
             elif sensor_id == 'AB':
                 data_buffer_x_2.append(np.nan)
                 data_buffer_y_2.append(np.nan)
@@ -171,7 +211,7 @@ def update(frame):
                 data_buffer_x_2.extend(list(read_bytes[0::3]))
                 data_buffer_y_2.extend(list(read_bytes[1::3]))
                 data_buffer_z_2.extend(list(read_bytes[2::3]))
-                time_buffer2.extend(list(current_time - np.linspace(0,.32,8)[::-1]))
+                time_buffer2.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
             elif sensor_id == 'AC':
                 data_buffer_x_3.append(np.nan)
                 data_buffer_y_3.append(np.nan)
@@ -180,7 +220,7 @@ def update(frame):
                 data_buffer_x_3.extend(list(read_bytes[0::3]))
                 data_buffer_y_3.extend(list(read_bytes[1::3]))
                 data_buffer_z_3.extend(list(read_bytes[2::3]))
-                time_buffer3.extend(list(current_time - np.linspace(0,.32,8)[::-1]))
+                time_buffer3.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
             elif sensor_id == 'AD':
                 data_buffer_x_4.append(np.nan)
                 data_buffer_y_4.append(np.nan)
@@ -189,7 +229,7 @@ def update(frame):
                 data_buffer_x_4.extend(list(read_bytes[0::3]))
                 data_buffer_y_4.extend(list(read_bytes[1::3]))
                 data_buffer_z_4.extend(list(read_bytes[2::3]))
-                time_buffer4.extend(list(current_time - np.linspace(0,.32,8)[::-1]))
+                time_buffer4.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
             elif sensor_id == 'AE':
                 data_buffer_x_5.append(np.nan)
                 data_buffer_y_5.append(np.nan)
@@ -198,7 +238,9 @@ def update(frame):
                 data_buffer_x_5.extend(list(read_bytes[0::3]))
                 data_buffer_y_5.extend(list(read_bytes[1::3]))
                 data_buffer_z_5.extend(list(read_bytes[2::3]))
-                time_buffer5.extend(list(current_time - np.linspace(0,.32,8)[::-1]))
+                time_buffer5.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
+                print(time_buffer5)
+                print(current_time)
             # print(list(time_buffer)[-8:])
             # print(data_buffer_x)
             # print(data_buffer_y)
@@ -243,11 +285,11 @@ def update(frame):
         line_y_4.set_data(time_data, list(data_buffer_y_4))
         line_z_4.set_data(time_data, list(data_buffer_z_4))
 
-    # if time_buffer5:
-    #     time_data = list(time_buffer5)
-    #     line_x_5.set_data(time_data, list(data_buffer_x_5))
-    #     line_y_5.set_data(time_data, list(data_buffer_y_5))
-    #     line_z_5.set_data(time_data, list(data_buffer_z_5))
+    if time_buffer5:
+        time_data = list(time_buffer5)
+        line_x_5.set_data(time_data, list(data_buffer_x_5))
+        line_y_5.set_data(time_data, list(data_buffer_y_5))
+        line_z_5.set_data(time_data, list(data_buffer_z_5))
     
     if time_buffer1 or time_buffer2 or time_buffer3 or time_buffer4 or time_buffer5:
         time_data1 = list(time_buffer1)
@@ -270,16 +312,16 @@ def update(frame):
             ax[1].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
             ax[2].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
             ax[3].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
-            # ax[4].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
+            ax[4].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
         else:
             ax[0].set_xlim(0, BUFFER_SECONDS)
             ax[1].set_xlim(0, BUFFER_SECONDS)
             ax[2].set_xlim(0, BUFFER_SECONDS)
             ax[3].set_xlim(0, BUFFER_SECONDS)
-            # ax[4].set_xlim(0, BUFFER_SECONDS)
+            ax[4].set_xlim(0, BUFFER_SECONDS)
 
 
-    return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4#, line_x_5,line_y_5, line_z_5
+    return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4, line_x_5,line_y_5, line_z_5
 
 
 # -----------------------
