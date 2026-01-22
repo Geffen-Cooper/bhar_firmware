@@ -9,13 +9,13 @@ import time
 # -----------------------
 COM_PORT = 'COM7'
 BAUD_RATE = 115200
-BUFFER_SECONDS = 60
-UPDATE_INTERVAL_MS = 100  # update every 100 ms
+BUFFER_SECONDS = 120
+UPDATE_INTERVAL_MS = 50  # update every 100 ms
 
 # -----------------------
 # Initialize serial
 # -----------------------
-ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
+ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=0.1)
 
 # -----------------------
 # Initialize data buffers
