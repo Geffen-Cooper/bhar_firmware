@@ -10,8 +10,8 @@ import numpy as np
 # -----------------------
 COM_PORT = 'COM7'
 BAUD_RATE = 115200
-BUFFER_SECONDS = 5#60
-UPDATE_INTERVAL_MS = 50  # update every 100 ms
+BUFFER_SECONDS = 10#60
+UPDATE_INTERVAL_MS = 10  # update every 100 ms
 
 # -----------------------
 # Initialize serial
@@ -239,7 +239,7 @@ def update(frame):
                 data_buffer_y_5.extend(list(read_bytes[1::3]))
                 data_buffer_z_5.extend(list(read_bytes[2::3]))
                 time_buffer5.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
-                print(time_buffer5)
+                # print(time_buffer5)
                 print(current_time)
             # print(list(time_buffer)[-8:])
             # print(data_buffer_x)

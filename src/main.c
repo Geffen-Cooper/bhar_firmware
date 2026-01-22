@@ -64,7 +64,7 @@ static void scan_init(void)
 	struct bt_le_scan_param scan_param = {
 		.type     = BT_LE_SCAN_TYPE_PASSIVE,
 		.interval = BT_GAP_SCAN_FAST_INTERVAL, // 5ms
-		.window   = 0x0055, // 2.5ms
+		.window   = BT_GAP_SCAN_FAST_INTERVAL, // 2.5ms
 		.options  = BT_LE_SCAN_OPT_NONE
 	};
 
