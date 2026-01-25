@@ -1,13 +1,15 @@
-Generated Code for NN
-C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\RefactoredTestGen\TestCases\TestData\
+# What This Branch Does
+- This is the basic data sending application for batteryless beacon
+- *** To receive this data, use the scan_beacon branch which runs on the DK
+- Batteryless sensor firmware to transmit data from BMA400 opportunistically
+- When the voltage on Cap > thresh (sensed by ADC at 5Hz), we set off the BMA400
+- When the fifo fills to 8 samples (320ms), we read it, then advertise a BLE packet
+- We also set the BLE address in main()
 
-Add use case to
-C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\RefactoredTestGen\test_plan.json
+# Software Config
+- Logging disabled in prj.conf
 
-To generate the test case
-./RefactoredTestGen/generate_test_data.py (specify args for specific tests we want)
+# Hardware Config
+- Uses pinout of new PCB in .overlay 
 
-See the following for how to call the functions with generated weights and data
-C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\TestCases
-
-Figure out how to do this for an existing network (or just use ML studio)
+# Random Notes
