@@ -1,13 +1,15 @@
-Generated Code for NN
-C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\RefactoredTestGen\TestCases\TestData\
+# What This Branch Does
+- This is the basic data **receiving** application for batteryless beacon scanning
+- *** The firmware runs on the central DK and receives data from beacons which use the opp_beacon branch
+- The DK firmware scans for beacons with BLE address ending in AA,AB,AC,AD,AE
+- It then dumps the data in the advertising packet to the serial port
+- Then acc_display.py (run on laptop), reads this data from the serial and displays to matplotlib
 
-Add use case to
-C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\RefactoredTestGen\test_plan.json
+# Software Config
+- Logging happens over RTT or serial for debugging
 
-To generate the test case
-./RefactoredTestGen/generate_test_data.py (specify args for specific tests we want)
+# Hardware Config
+- This uses the default DK .overlay with no modifications
 
-See the following for how to call the functions with generated weights and data
-C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\TestCases
-
-Figure out how to do this for an existing network (or just use ML studio)
+# Random Notes
+- If want to have more than 5 beacons to scan, need to add filter in prj.conf and main.c
