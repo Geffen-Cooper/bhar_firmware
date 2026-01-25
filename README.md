@@ -1,3 +1,15 @@
+# What This Branch Does
+- Reads from BMA400 in LP one sample at a time and then does LSTM inference
+
+# Software Config
+- Uses updated CMSIS NN library to generate test cases
+- Logging disabled in prj.conf
+
+# Hardware Config
+- Uses pinout of old PCB in .overlay 
+
+# Random Notes
+
 Generated Code for NN
 C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\RefactoredTestGen\TestCases\TestData\
 
@@ -9,5 +21,3 @@ To generate the test case
 
 See the following for how to call the functions with generated weights and data
 C:\nordic\bhar\CMSIS-NN\Tests\UnitTest\TestCases
-
-Figure out how to do this for an existing network (or just use ML studio)
