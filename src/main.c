@@ -27,7 +27,24 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
     int ad_len = device_info->adv_data->len;
 
     // LOG_INF("Advertising data (%d bytes): ", ad_len);
-	LOG_INF("%02X%02X ", device_info->adv_data->data[14],device_info->adv_data->data[13]);
+	uint8_t pred = device_info->adv_data->data[4];
+	// LOG_INF("%02X%02X ", device_info->adv_data->data[5],device_info->adv_data->data[4]);
+	if(pred == 0)
+	{
+		LOG_INF("Wave");
+	}
+	else if(pred == 1)
+	{
+		LOG_INF("Shake");
+	}
+	else if(pred == 2)
+	{
+		LOG_INF("Clap");
+	}
+	else if(pred == 3)
+	{
+		LOG_INF("None");
+	}
 }
 
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
@@ -56,7 +73,7 @@ static void scan_init(void)
 	bt_scan_cb_register(&scan_cb);
 
 	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AD", "random", &addr);
 	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
 	if (err) {
 		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
