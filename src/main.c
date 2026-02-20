@@ -14,21 +14,112 @@
 #include "bma400.h"
 #include "bma400_defs.h"
 
-#include "run_nn.h"
 
-#include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/addr.h>
 #include <zephyr/drivers/adc.h>
 
+//BLE STUFF
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/gap.h>
+
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
-#define DEVICE_NAME CONFIG_BT_DEVICE_NAME
-#define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
+#define DEVICE_NAME       CONFIG_BT_DEVICE_NAME
+#define DEVICE_NAME_LEN   (sizeof(DEVICE_NAME) - 1)
+#define BT_UUID_ACCEL_SERVICE_VAL \ 
+	BT_UUID_128_ENCODE(0x12345678,0x1234,0x5678,0x1234,0x1234567890ab)
 
-/* STEP 2.1 - Declare the Company identifier (Company ID) */
-#define COMPANY_ID_CODE 0x0059
+#define BT_UUID_ACCEL_CHAR_VAL \
+	BT_UUID_128_ENCODE(0x12345679,0x1234,0x5678,0x1234,0x1234567890ab)
 
-int16_t buf;
+static struct bt_uuid_128 accel_service_uuid = BT_UUID_INIT_128(BT_UUID_ACCEL_SERVICE_VAL);
+static struct bt_uuid_128 accel_char_uuid    = BT_UUID_INIT_128(BT_UUID_ACCEL_CHAR_VAL);
+
+static uint8_t bhar_packet[4] = {0};
+
+static void accel_ccc_cfg_changed(const struct bt_gatt_attr *attr,uint16_t value){
+	bool notif_enabled = (value == BT_GATT_CCC_NOTIFY);
+	LOG_INF("Accel notifications %s\n",notif_enabled ? "enabled" : "disabled");
+}
+
+BT_GATT_SERVICE_DEFINE(accel_svc,
+	BT_GATT_PRIMARY_SERVICE(&accel_service_uuid),
+	BT_GATT_CHARACTERISTIC(&accel_char_uuid.uuid,
+			       BT_GATT_CHRC_NOTIFY,
+			       BT_GATT_PERM_NONE,
+			       NULL, NULL, accel_value),
+	BT_GATT_CCC(accel_ccc_cfg_changed,
+		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
+);
+
+static struct bt_conn *current_conn;
+
+static void connected(struct bt_conn *conn, uint8_t err)
+{
+	if (err) {
+		LOG_INF("Connection failed (err %u)\n", err);
+		return;
+	}
+	LOG_INF("Connected\n");
+	current_conn = bt_conn_ref(conn);
+}
+
+static void disconnected(struct bt_conn *conn, uint8_t reason)
+{
+	LOG_INF("Disconnected (reason 0x%02x)\n", reason);
+	if (current_conn) {
+		bt_conn_unref(current_conn);
+		current_conn = NULL;
+	}
+}
+
+BT_CONN_CB_DEFINE(conn_callbacks) = {
+	.connected = connected,
+	.disconnected = disconnected,
+};
+
+static const struct bt_data ad[] = {
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+};
+
+static void bt_ready(int err)
+{
+	if (err) {
+		LOG_INF("Bluetooth init failed (err %d)\n", err);
+		return;
+	}
+	LOG_INF("Bluetooth initialized\n");
+	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad),
+			      NULL, 0);
+	if (err) {
+		LOG_INF("Advertising failed to start (err %d)\n", err);
+		return;
+	}
+	LOG_INF("Advertising started\n");
+}
+
+// for sending to android phone
+static void send_accel_notification(uint8_t x, uint8_t y, uint8_t z, uint8_t v){
+	if(!current_conn) return;
+
+	bhar_packet[0] = x;
+	bhar_packet[1] = y;
+	bhar_packet[2] = z;
+	bhar_packet[3] = v;
+	
+	int err = bt_gatt_notify(current_conn, &accel_svc.attrs[1],
+				 bhar_packet, sizeof(bhar_packet));
+	if (err) {
+		LOG_INF("Notify failed (err %d)\n", err);
+	}
+}
+
+
+
+int16_t adc_buf;
 
 bool last_tx_done = true;
 
@@ -43,33 +134,33 @@ struct adc_sequence sequence;
 
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
-static const struct bt_le_adv_param *adv_param =
-    BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
-            32, /* Min Advertising Interval 250ms (400*0.625ms) */
-            33, /* Max Advertising Interval 250.625ms (401*0.625ms) */
-            NULL); /* Set to NULL for undirected advertising */
+// static const struct bt_le_adv_param *adv_param =
+//     BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
+//             32, /* Min Advertising Interval 250ms (400*0.625ms) */
+//             33, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+//             NULL); /* Set to NULL for undirected advertising */
 /* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
 // static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x01 };
-static adv_mfg_data_type adv_mfg_data = {
-    .company_code = COMPANY_ID_CODE,
-    .samples = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
-                 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
-                 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12,
-                 0x13, 0x14, 0x15, 0x16, 0x17, 0x18 }
-};
+// static adv_mfg_data_type adv_mfg_data = {
+//     .company_code = COMPANY_ID_CODE,
+//     .samples = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+//                  0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
+//                  0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12,
+//                  0x13, 0x14, 0x15, 0x16, 0x17, 0x18 }
+// };
 // static adv_mfg_data_type adv_mfg_data = {
 //     .company_code = COMPANY_ID_CODE,
 //     .samples = { 0x01, 0x02, 0x03, 0x04 }
 // };
 // TODO: I think this payload is too big, need to maybe remove or shorten the name
-static const struct bt_data ad[] = {
-    // BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
-    // BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
-    /* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
-    BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
-};
+// static const struct bt_data ad[] = {
+//     // BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+//     // BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+//     /* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
+//     BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
+// };
 // threads
-#define STACKSIZE 1024
+#define STACKSIZE 2048
 #define THREAD_READ_BMA_PRIORITY 7
 #define THREAD_RUN_POLICY_PRIORITY 8
 K_SEM_DEFINE(bma400_ready, 0, 1);
@@ -135,7 +226,6 @@ void bma_int_handler(const struct device *dev, struct gpio_callback *cb, uint32_
 
 void thread_read_bma400(void)
 {
-	static int count = 0;
 	while(1){
 		LOG_INF("In the read thread");
 		k_sem_take(&bma400_ready, K_FOREVER); // Sleep here if semaphore is at 0
@@ -144,20 +234,59 @@ void thread_read_bma400(void)
 		const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
 		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
 
-		// read data from bma400 fifo
-		bma400_get_fifo_data(&fifo_frame, &bma_sensor);
-		uint16_t accel_frames_req = FIFO_SAMPLES;
-		bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
+		// Read one sample
+		bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+
+		// // read data from bma400 fifo
+		// bma400_get_fifo_data(&fifo_frame, &bma_sensor);
+		// uint16_t accel_frames_req = FIFO_SAMPLES;
+		// bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
 		// LOG_INF("Read FIFO Data, disabling BMA");
 
-		// after reading, disable the interrupt and put the bma400 to sleep
-		int_en.type = BMA400_FIFO_WM_INT_EN;
-		int_en.conf = BMA400_DISABLE;
-		int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-		bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
+		// // after reading, disable the interrupt and put the bma400 to sleep
+		// int_en.type = BMA400_FIFO_WM_INT_EN;
+		// int_en.conf = BMA400_DISABLE;
+		// int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+		// bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
 
 		// Disable SPI
 		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+
+		uint8_t acc_x;
+		uint8_t acc_y;
+		uint8_t acc_z;
+		uint8_t cap_volt;
+
+		if(acc_data.x < 0)
+		{
+			acc_x = (acc_data.x + 4096) >> 4;
+		}
+		else
+		{
+			acc_x = acc_data.x  >> 4;
+		}
+		if(acc_data.y < 0)
+		{
+			acc_y = (acc_data.y + 4096) >> 4;
+		}
+		else
+		{
+			acc_y = acc_data.y  >> 4;
+		}
+		if(acc_data.z < 0)
+		{
+			acc_z = (acc_data.z + 4096) >> 4;
+		}
+		else
+		{
+			acc_z = acc_data.z  >> 4;
+		}
+
+		int cap_volt_mv = (int)adc_buf;
+		adc_raw_to_millivolts_dt(&adc_channel, &cap_volt_mv);
+		cap_volt = cap_volt_mv / 100; // cap_volt_mv will be [0,180], /100 --> [0,180]
+
+		send_accel_notification(acc_x,acc_y,acc_z,cap_volt);
 
 		// LOG_INF("Advertising Data");
 		// LOG_INF("FIFO Length: %d", fifo_frame.length);
@@ -175,38 +304,38 @@ void thread_read_bma400(void)
 		// to transmit, we need to convert back to raw bytes
 		// 0x0000 -> 0x07F0 (+), 0 -> 2032 by increments of 16
 		// 0x0800 -> 0xFF0 (-), -2048 -> -16 by increments of 16
-		for(int i = 0; i < 8; i++)
-		{
-			if(accel_data[i].x < 0)
-			{
-				adv_mfg_data.samples[i*3] = (accel_data[i].x + 4096) >> 4;
-			}
-			else
-			{
-				adv_mfg_data.samples[i*3] = accel_data[i].x  >> 4;
-			}
-			if(accel_data[i].y < 0)
-			{
-				adv_mfg_data.samples[i*3+1] = (accel_data[i].y + 4096) >> 4;
-			}
-			else
-			{
-				adv_mfg_data.samples[i*3+1] = accel_data[i].y  >> 4;
-			}
-			if(accel_data[i].z < 0)
-			{
-				adv_mfg_data.samples[i*3+2] = (accel_data[i].z + 4096) >> 4;
-			}
-			else
-			{
-				adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
-			}
-		}
-		bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
-		bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-		k_sleep(K_MSEC(10)); // wait at least one cycle
-		bt_le_adv_stop(); // stop advertising
-		last_tx_done = true;
+		// for(int i = 0; i < 8; i++)
+		// {
+		// 	if(accel_data[i].x < 0)
+		// 	{
+		// 		adv_mfg_data.samples[i*3] = (accel_data[i].x + 4096) >> 4;
+		// 	}
+		// 	else
+		// 	{
+		// 		adv_mfg_data.samples[i*3] = accel_data[i].x  >> 4;
+		// 	}
+		// 	if(accel_data[i].y < 0)
+		// 	{
+		// 		adv_mfg_data.samples[i*3+1] = (accel_data[i].y + 4096) >> 4;
+		// 	}
+		// 	else
+		// 	{
+		// 		adv_mfg_data.samples[i*3+1] = accel_data[i].y  >> 4;
+		// 	}
+		// 	if(accel_data[i].z < 0)
+		// 	{
+		// 		adv_mfg_data.samples[i*3+2] = (accel_data[i].z + 4096) >> 4;
+		// 	}
+		// 	else
+		// 	{
+		// 		adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
+		// 	}
+		// }
+		// bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
+		// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
+		// k_sleep(K_MSEC(10)); // wait at least one cycle
+		// bt_le_adv_stop(); // stop advertising
+		// last_tx_done = true;
 
 		// for(int i = 0; i < 8; i++)
 		// {
@@ -392,17 +521,17 @@ void thread_run_policy(void)
         if (err < 0) {
             LOG_ERR("Could not read (%d)", err);
         }
-        val_mv = (int)buf;
+        val_mv = (int)adc_buf;
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
         LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
-		if(val_mv >= 1600 && last_tx_done == true)
+		if(val_mv >= 1600)
 		{
-			int_en.type = BMA400_FIFO_WM_INT_EN;
-			int_en.conf = BMA400_ENABLE;
-			bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
-			bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-			last_tx_done = false;
+			// int_en.type = BMA400_FIFO_WM_INT_EN;
+			// int_en.conf = BMA400_ENABLE;
+			// bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
+			// bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+			// last_tx_done = false;
 			gpio_pin_set_dt(&hen_pin, 1);
 		}
 		// turn off LED to avoid going into cold start mode
@@ -410,94 +539,6 @@ void thread_run_policy(void)
 		{
 			gpio_pin_set_dt(&hen_pin, 0);
 		}
-		// else
-		// {
-		// 	gpio_pin_set_dt(&hen_pin, 0);
-		// }
-        // // continue;
-        // uint16_t energy_val = 5*val_mv*val_mv/1000000 - 41;
-        // LOG_INF("1. Read ADC: %d mv, %d uJ", val_mv, energy_val);
-        // // 2. write to buffer
-        // if(buffer_idx == 5)
-        // {
-        //  // When the buffer is full, we shift everything left by one, and set the last index as newest val
-        //  for(int buf_i = 0; buf_i < 4; buf_i++)
-        //  {
-        //      energy_vals[buf_i] = energy_vals[buf_i+1];
-        //  }
-        //  energy_vals[4] = energy_val;
-        //  // if we just sent, wait an iteration
-        //  if(first_e_harvest == 1)
-        //  {
-        //      first_e_harvest = 0;
-        //  }
-        //  else
-        //  {
-        //      if(just_filled == 1)
-        //      {
-        //          // e_h[4] = e[5]-e[4] (e[4]-e[3])
-        //          energy_harvested[buffer_idx-1] = energy_vals[4] - energy_vals[3];
-        //      }
-        //      else
-        //      {
-        //          for(int buf_i = 0; buf_i < 4; buf_i++)
-        //          {
-        //              energy_harvested[buf_i] = energy_harvested[buf_i+1];
-        //          }
-        //          energy_harvested[buffer_idx-1] = energy_vals[4] - energy_vals[3];
-        //      }
-        //  }
-            
-        // }
-        // else
-        // {
-        //  if(first_e_harvest == 1)
-        //  {
-        //      first_e_harvest = 0;
-        //  }
-        //  else
-        //  {
-        //      // e_h[0] = e[1]-e[0], e_h[1] = e[2]-e[1], e_h[2] = e[3]-e[2], e_h[3] = e[4]-e[3]
-        //      energy_harvested[buffer_idx-1] = energy_vals[buffer_idx] - energy_vals[buffer_idx-1];
-        //  }
-        //  energy_vals[buffer_idx] = energy_val;
-        //  buffer_idx += 1;
-        //  if(buffer_idx == 5)
-        //  {
-        //      just_filled = 1;
-        //  }
-        // }
-        // // LOG_INF("2. Latest Energy: %d, %d, %d, %d, %d. Latest Harvested:  %d, %d, %d, %d, %d", energy_vals[0], energy_vals[1], energy_vals[2], energy_vals[3], energy_vals[4], energy_harvested[0], energy_harvested[1], energy_harvested[2], energy_harvested[3], energy_harvested[4]);
-        // // adv_mfg_data.cap_mv = val_mv;
-        // // adv_mfg_data.cap_mv = val_mv;
-        // // 3. Get average energy harvested
-        // uint16_t avg_energy_harvested = 0;
-        // // implicitly divide by 1 since one second, this estimates uW or uJ harvested per second
-        // for(int buf_i = 0; buf_i < 4; buf_i++)
-        // {
-        //  avg_energy_harvested += energy_harvested[buf_i];
-        // }
-        // // LOG_INF("3. Avg Energy Harvested (average power): %d uW", avg_energy_harvested);
-        // // 4. compute policy
-        // uint16_t thresh = theta_e*energy_vals[4] + theta_p*avg_energy_harvested;
-        // // LOG_INF("4. Run Policy.");
-        // // LOG_INF("\t Current E: %d > 100?",energy_vals[4]);
-        // LOG_INF("\t Current time - last sent: %d - %d = %d", current_time, last_send_time, current_time - last_send_time);
-        // // LOG_INF("\t tau: %d",thresh);
-        // // if( (energy_vals[4] > 100) && ( (current_time - last_send_time) > thresh) && (read_once == 1) )
-        // // if(read_once == 1)
-        // if( (4300 < val_mv) && (can_read)) // 4.5V
-        // {
-        //  // to_send_flag = 1;
-        //  // trigger bma to start reading
-        //  int_en.type = BMA400_FIFO_WM_INT_EN;
-        //  int_en.conf = BMA400_ENABLE;
-        //  bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
-        //  bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-        //  read_once = 0;
-        //  can_read = 0; // can only read after last packet sent
-        // }
-        // current_time += 1;
     }
 }
 K_THREAD_DEFINE(thread_run_policy_id, STACKSIZE, thread_run_policy, NULL, NULL, NULL, THREAD_RUN_POLICY_PRIORITY, 0, 0);
@@ -511,9 +552,9 @@ int main(void)
 	int err;
 
 	// Fix the BLE address
-	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
-    err = bt_id_create(&addr, NULL);
+	// bt_addr_le_t addr;
+    // err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+    // err = bt_id_create(&addr, NULL);
 
 	// Enable BLE
 	err = bt_enable(NULL);
@@ -557,8 +598,8 @@ int main(void)
 	gpio_add_callback(int_pin.port, &int_cb_data);
 
 
-	sequence.buffer = &buf;
-	sequence.buffer_size = sizeof(buf);
+	sequence.buffer = &adc_buf;
+	sequence.buffer_size = sizeof(adc_buf);
 
 	/* STEP 3.3 - validate that the ADC peripheral (SAADC) is ready */
 	if (!adc_is_ready_dt(&adc_channel)) {
@@ -580,8 +621,8 @@ int main(void)
 
 	LOG_INF("====================== APP START=======***************************");
 	bma400_init(&bma_sensor);
-	// init_read_lp();
-	init_fifo_watermark();
+	init_read_lp();
+	// init_fifo_watermark();
 
 	
 
