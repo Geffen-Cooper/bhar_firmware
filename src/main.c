@@ -49,7 +49,7 @@ BT_GATT_SERVICE_DEFINE(accel_svc,
 	BT_GATT_CHARACTERISTIC(&accel_char_uuid.uuid,
 			       BT_GATT_CHRC_NOTIFY,
 			       BT_GATT_PERM_NONE,
-			       NULL, NULL, accel_value),
+			       NULL, NULL, bhar_packet),
 	BT_GATT_CCC(accel_ccc_cfg_changed,
 		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
 );
@@ -284,7 +284,7 @@ void thread_read_bma400(void)
 
 		int cap_volt_mv = (int)adc_buf;
 		adc_raw_to_millivolts_dt(&adc_channel, &cap_volt_mv);
-		cap_volt = cap_volt_mv / 100; // cap_volt_mv will be [0,180], /100 --> [0,180]
+		cap_volt = cap_volt_mv / 10; // cap_volt_mv will be [0,180], /10 --> [0,180]
 
 		send_accel_notification(acc_x,acc_y,acc_z,cap_volt);
 
@@ -557,7 +557,7 @@ int main(void)
     // err = bt_id_create(&addr, NULL);
 
 	// Enable BLE
-	err = bt_enable(NULL);
+	err = bt_enable(bt_ready);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (err %d)\n", err);
 		return -1;
