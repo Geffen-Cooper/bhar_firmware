@@ -56,6 +56,11 @@ BT_GATT_SERVICE_DEFINE(accel_svc,
 
 static struct bt_conn *current_conn;
 
+static const struct bt_data ad[] = {
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+};
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	if (err) {
@@ -66,6 +71,28 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	current_conn = bt_conn_ref(conn);
 }
 
+static void adv_work_handler(struct k_work *work)
+{
+    int err;
+
+    /* Make sure advertising is stopped */
+    bt_le_adv_stop();
+
+    err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2,
+                          ad, ARRAY_SIZE(ad),
+                          NULL, 0);
+    if (err) {
+        LOG_ERR("Advertising restart failed (err %d)", err);
+    } else {
+        LOG_INF("Advertising restarted");
+    }
+}
+
+static void adv_work_handler(struct k_work *work);
+K_WORK_DEFINE(adv_work, adv_work_handler);
+
+
+
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	LOG_INF("Disconnected (reason 0x%02x)\n", reason);
@@ -73,16 +100,16 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		bt_conn_unref(current_conn);
 		current_conn = NULL;
 	}
+
+	// bt_le_adv_stop();
+	// k_sleep(K_MSEC(10));
+
+	k_work_submit(&adv_work);
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
-};
-
-static const struct bt_data ad[] = {
-    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 };
 
 static void bt_ready(int err)
@@ -227,7 +254,7 @@ void bma_int_handler(const struct device *dev, struct gpio_callback *cb, uint32_
 void thread_read_bma400(void)
 {
 	while(1){
-		LOG_INF("In the read thread");
+		// LOG_INF("In the read thread");
 		k_sem_take(&bma400_ready, K_FOREVER); // Sleep here if semaphore is at 0
 
 		// Enable SPI
@@ -524,8 +551,8 @@ void thread_run_policy(void)
         val_mv = (int)adc_buf;
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
-        LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
-		if(val_mv >= 1600)
+        // LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
+		if(val_mv >= 1750)
 		{
 			// int_en.type = BMA400_FIFO_WM_INT_EN;
 			// int_en.conf = BMA400_ENABLE;
@@ -535,7 +562,7 @@ void thread_run_policy(void)
 			gpio_pin_set_dt(&hen_pin, 1);
 		}
 		// turn off LED to avoid going into cold start mode
-		if(val_mv < 1500)
+		if(val_mv < 1650)
 		{
 			gpio_pin_set_dt(&hen_pin, 0);
 		}
@@ -633,7 +660,7 @@ int main(void)
 	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 	
-	k_timer_start(&timer0, K_MSEC(20), K_MSEC(20));
+	k_timer_start(&timer0, K_MSEC(10), K_MSEC(10));
 	// gpio_pin_set_dt(&hen_pin, 1);
 	while(1){
 		k_sleep(K_FOREVER);
