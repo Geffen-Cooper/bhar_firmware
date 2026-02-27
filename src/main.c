@@ -37,7 +37,7 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 static struct bt_uuid_128 accel_service_uuid = BT_UUID_INIT_128(BT_UUID_ACCEL_SERVICE_VAL);
 static struct bt_uuid_128 accel_char_uuid    = BT_UUID_INIT_128(BT_UUID_ACCEL_CHAR_VAL);
 
-static uint8_t bhar_packet[4] = {0};
+static uint8_t bhar_packet[5] = {0};
 
 static void accel_ccc_cfg_changed(const struct bt_gatt_attr *attr,uint16_t value){
 	bool notif_enabled = (value == BT_GATT_CCC_NOTIFY);
@@ -129,13 +129,14 @@ static void bt_ready(int err)
 }
 
 // for sending to android phone
-static void send_accel_notification(uint8_t x, uint8_t y, uint8_t z, uint8_t v){
+static void send_accel_notification(uint8_t x, uint8_t y, uint8_t z, uint16_t v){
 	if(!current_conn) return;
 
 	bhar_packet[0] = x;
 	bhar_packet[1] = y;
 	bhar_packet[2] = z;
-	bhar_packet[3] = v;
+	bhar_packet[3] = (uint8_t)((v >> 8) & 0xFF); // MSB
+	bhar_packet[4] = (uint8_t)(v & 0xFF);        // LSB
 	
 	int err = bt_gatt_notify(current_conn, &accel_svc.attrs[1],
 				 bhar_packet, sizeof(bhar_packet));
@@ -309,11 +310,11 @@ void thread_read_bma400(void)
 			acc_z = acc_data.z  >> 4;
 		}
 
-		int cap_volt_mv = (int)adc_buf;
+		uint16_t cap_volt_mv = (int)adc_buf;
 		adc_raw_to_millivolts_dt(&adc_channel, &cap_volt_mv);
-		cap_volt = cap_volt_mv / 10; // cap_volt_mv will be [0,180], /10 --> [0,180]
+		// cap_volt = cap_volt_mv / 10; // cap_volt_mv will be [0,180], /10 --> [0,180]
 
-		send_accel_notification(acc_x,acc_y,acc_z,cap_volt);
+		send_accel_notification(acc_x,acc_y,acc_z,cap_volt_mv);
 
 		// LOG_INF("Advertising Data");
 		// LOG_INF("FIFO Length: %d", fifo_frame.length);
