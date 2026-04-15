@@ -26,7 +26,15 @@
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
-#define DEVICE_NAME       CONFIG_BT_DEVICE_NAME
+// Mode Flag, by default we assume batteryless
+// Only go into observer mode if we see voltage below 1V
+#define BATTERYLESS_MODE true
+#define OBSERVER_MODE false
+bool sensor_mode = BATTERYLESS_MODE;
+
+
+// ============= Observer Mode =============
+#define DEVICE_NAME       "BHAR_04"
 #define DEVICE_NAME_LEN   (sizeof(DEVICE_NAME) - 1)
 #define BT_UUID_ACCEL_SERVICE_VAL \ 
 	BT_UUID_128_ENCODE(0x12345678,0x1234,0x5678,0x1234,0x1234567890ab)
@@ -56,7 +64,7 @@ BT_GATT_SERVICE_DEFINE(accel_svc,
 
 static struct bt_conn *current_conn;
 
-static const struct bt_data ad[] = {
+static const struct bt_data ad_connected[] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
     BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 };
@@ -79,7 +87,7 @@ static void adv_work_handler(struct k_work *work)
     bt_le_adv_stop();
 
     err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2,
-                          ad, ARRAY_SIZE(ad),
+                          ad_connected, ARRAY_SIZE(ad_connected),
                           NULL, 0);
     if (err) {
         LOG_ERR("Advertising restart failed (err %d)", err);
@@ -119,7 +127,7 @@ static void bt_ready(int err)
 		return;
 	}
 	LOG_INF("Bluetooth initialized\n");
-	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad),
+	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad_connected, ARRAY_SIZE(ad_connected),
 			      NULL, 0);
 	if (err) {
 		LOG_INF("Advertising failed to start (err %d)\n", err);
@@ -145,8 +153,8 @@ static void send_accel_notification(uint8_t x, uint8_t y, uint8_t z, uint16_t v)
 	}
 }
 
-
-
+// ============= Batteryless Mode =============
+#define COMPANY_ID_CODE 0x0059
 int16_t adc_buf;
 
 bool last_tx_done = true;
@@ -159,34 +167,30 @@ typedef struct adv_mfg_data {
 
 struct adc_sequence sequence;
 
-
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
-// static const struct bt_le_adv_param *adv_param =
-//     BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
-//             32, /* Min Advertising Interval 250ms (400*0.625ms) */
-//             33, /* Max Advertising Interval 250.625ms (401*0.625ms) */
-//             NULL); /* Set to NULL for undirected advertising */
+static const struct bt_le_adv_param *adv_param =
+    BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
+            32, /* Min Advertising Interval 250ms (400*0.625ms) */
+            33, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+            NULL); /* Set to NULL for undirected advertising */
 /* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
-// static adv_mfg_data_type adv_mfg_data = { COMPANY_ID_CODE, 0x01 };
-// static adv_mfg_data_type adv_mfg_data = {
-//     .company_code = COMPANY_ID_CODE,
-//     .samples = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
-//                  0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
-//                  0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12,
-//                  0x13, 0x14, 0x15, 0x16, 0x17, 0x18 }
-// };
-// static adv_mfg_data_type adv_mfg_data = {
-//     .company_code = COMPANY_ID_CODE,
-//     .samples = { 0x01, 0x02, 0x03, 0x04 }
-// };
+static adv_mfg_data_type adv_mfg_data = {
+    .company_code = COMPANY_ID_CODE,
+    .samples = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+                 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
+                 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12,
+                 0x13, 0x14, 0x15, 0x16, 0x17, 0x18 }
+};
+
 // TODO: I think this payload is too big, need to maybe remove or shorten the name
-// static const struct bt_data ad[] = {
-//     // BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
-//     // BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
-//     /* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
-//     BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
-// };
+static const struct bt_data ad_batteryless[] = {
+    // BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+    // BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+    /* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
+    BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
+};
+
 // threads
 #define STACKSIZE 2048
 #define THREAD_READ_BMA_PRIORITY 7
@@ -258,129 +262,117 @@ void thread_read_bma400(void)
 		// LOG_INF("In the read thread");
 		k_sem_take(&bma400_ready, K_FOREVER); // Sleep here if semaphore is at 0
 
-		// Enable SPI
-		const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
-		pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
-
-		// Read one sample
-		bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
-
-		// // read data from bma400 fifo
-		// bma400_get_fifo_data(&fifo_frame, &bma_sensor);
-		// uint16_t accel_frames_req = FIFO_SAMPLES;
-		// bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
-		// LOG_INF("Read FIFO Data, disabling BMA");
-
-		// // after reading, disable the interrupt and put the bma400 to sleep
-		// int_en.type = BMA400_FIFO_WM_INT_EN;
-		// int_en.conf = BMA400_DISABLE;
-		// int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-		// bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
-
-		// Disable SPI
-		pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
-
-		uint8_t acc_x;
-		uint8_t acc_y;
-		uint8_t acc_z;
-		uint8_t cap_volt;
-
-		if(acc_data.x < 0)
+		if(sensor_mode == BATTERYLESS_MODE)
 		{
-			acc_x = (acc_data.x + 4096) >> 4;
+			// Enable SPI
+			const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
+			pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
+
+			// read data from bma400 fifo
+			bma400_get_fifo_data(&fifo_frame, &bma_sensor);
+			uint16_t accel_frames_req = FIFO_SAMPLES;
+			bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
+
+			// after reading, disable the interrupt and put the bma400 to sleep
+			int_en.type = BMA400_FIFO_WM_INT_EN;
+			int_en.conf = BMA400_DISABLE;
+			int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+			bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
+
+			// Disable SPI
+        	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+
+			// Disable GPIO
+			const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+        	pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
+
+
+			// our accelerometer data is implicitly 8 bits but stored as 16 bits
+			// we have 12 bit on the acceleometer 0000 1234 5678 ABCD
+			// we grab the top 8 bit (1234 5678) -> 0000 1234 5678 0000, bottom 4 get zeroed out
+			// then when we put convert into int16_t we have 0000 1234 5678 0000 (top 4 coulf be 1111 if negative)
+			// even though we really only have 8 bits of resolution
+			// so when we want to send 8 bits, we need to shift right 4 and grab bottom 8 bits
+			// then when we receive, we will shift left back 4
+			// Ex: 0x01F0 = 512 = 1G. Even though 512 cannot be stored in 8 bits, the implicit resolution is 8 bits since bottom 4 always 0
+			// i.e. only the middle two hex digits will actually change for positive numbers
+			// 0xFE00 = -512 = -1G
+			// to transmit, we need to convert back to raw bytes
+			// 0x0000 -> 0x07F0 (+), 0 -> 2032 by increments of 16
+			// 0x0800 -> 0xFF0 (-), -2048 -> -16 by increments of 16
+			for(int i = 0; i < 8; i++)
+			{
+				if(accel_data[i].x < 0)
+				{
+					adv_mfg_data.samples[i*3] = (accel_data[i].x + 4096) >> 4;
+				}
+				else
+				{
+					adv_mfg_data.samples[i*3] = accel_data[i].x  >> 4;
+				}
+				if(accel_data[i].y < 0)
+				{
+					adv_mfg_data.samples[i*3+1] = (accel_data[i].y + 4096) >> 4;
+				}
+				else
+				{
+					adv_mfg_data.samples[i*3+1] = accel_data[i].y  >> 4;
+				}
+				if(accel_data[i].z < 0)
+				{
+					adv_mfg_data.samples[i*3+2] = (accel_data[i].z + 4096) >> 4;
+				}
+				else
+				{
+					adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
+				}
+			}
+			bt_le_adv_update_data(ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // update adv data
+			// gpio_pin_set_dt(&hen_pin, 1);
+			bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // start advertising
+			k_sleep(K_MSEC(18)); // wait at least one cycle
+			bt_le_adv_stop(); // stop advertising
+			last_tx_done = true;
 		}
-		else
+		else // observer mode
 		{
-			acc_x = acc_data.x  >> 4;
+			// Read one sample
+			bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+
+			uint8_t acc_x;
+			uint8_t acc_y;
+			uint8_t acc_z;
+			uint8_t cap_volt;
+
+			if(acc_data.x < 0)
+			{
+				acc_x = (acc_data.x + 4096) >> 4;
+			}
+			else
+			{
+				acc_x = acc_data.x  >> 4;
+			}
+			if(acc_data.y < 0)
+			{
+				acc_y = (acc_data.y + 4096) >> 4;
+			}
+			else
+			{
+				acc_y = acc_data.y  >> 4;
+			}
+			if(acc_data.z < 0)
+			{
+				acc_z = (acc_data.z + 4096) >> 4;
+			}
+			else
+			{
+				acc_z = acc_data.z  >> 4;
+			}
+
+			uint16_t cap_volt_mv = (int)adc_buf;
+			adc_raw_to_millivolts_dt(&adc_channel, &cap_volt_mv);
+			send_accel_notification(acc_x,acc_y,acc_z,cap_volt_mv);
 		}
-		if(acc_data.y < 0)
-		{
-			acc_y = (acc_data.y + 4096) >> 4;
-		}
-		else
-		{
-			acc_y = acc_data.y  >> 4;
-		}
-		if(acc_data.z < 0)
-		{
-			acc_z = (acc_data.z + 4096) >> 4;
-		}
-		else
-		{
-			acc_z = acc_data.z  >> 4;
-		}
-
-		uint16_t cap_volt_mv = (int)adc_buf;
-		adc_raw_to_millivolts_dt(&adc_channel, &cap_volt_mv);
-		// cap_volt = cap_volt_mv / 10; // cap_volt_mv will be [0,180], /10 --> [0,180]
-
-		send_accel_notification(acc_x,acc_y,acc_z,cap_volt_mv);
-
-		// LOG_INF("Advertising Data");
-		// LOG_INF("FIFO Length: %d", fifo_frame.length);
-
-		// our accelerometer data is implicitly 8 bits but stored as 16 bits
-		// we have 12 bit on the acceleometer 0000 1234 5678 ABCD
-		// we grab the top 8 bit (1234 5678) -> 0000 1234 5678 0000, bottom 4 get zeroed out
-		// then when we put convert into int16_t we have 0000 1234 5678 0000 (top 4 coulf be 1111 if negative)
-		// even though we really only have 8 bits of resolution
-		// so when we want to send 8 bits, we need to shift right 4 and grab bottom 8 bits
-		// then when we receive, we will shift left back 4
-		// Ex: 0x01F0 = 512 = 1G. Even though 512 cannot be stored in 8 bits, the implicit resolution is 8 bits since bottom 4 always 0
-		// i.e. only the middle two hex digits will actually change for positive numbers
-		// 0xFE00 = -512 = -1G
-		// to transmit, we need to convert back to raw bytes
-		// 0x0000 -> 0x07F0 (+), 0 -> 2032 by increments of 16
-		// 0x0800 -> 0xFF0 (-), -2048 -> -16 by increments of 16
-		// for(int i = 0; i < 8; i++)
-		// {
-		// 	if(accel_data[i].x < 0)
-		// 	{
-		// 		adv_mfg_data.samples[i*3] = (accel_data[i].x + 4096) >> 4;
-		// 	}
-		// 	else
-		// 	{
-		// 		adv_mfg_data.samples[i*3] = accel_data[i].x  >> 4;
-		// 	}
-		// 	if(accel_data[i].y < 0)
-		// 	{
-		// 		adv_mfg_data.samples[i*3+1] = (accel_data[i].y + 4096) >> 4;
-		// 	}
-		// 	else
-		// 	{
-		// 		adv_mfg_data.samples[i*3+1] = accel_data[i].y  >> 4;
-		// 	}
-		// 	if(accel_data[i].z < 0)
-		// 	{
-		// 		adv_mfg_data.samples[i*3+2] = (accel_data[i].z + 4096) >> 4;
-		// 	}
-		// 	else
-		// 	{
-		// 		adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
-		// 	}
-		// }
-		// bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
-		// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-		// k_sleep(K_MSEC(10)); // wait at least one cycle
-		// bt_le_adv_stop(); // stop advertising
-		// last_tx_done = true;
-
-		// for(int i = 0; i < 8; i++)
-		// {
-		// 	LOG_INF("X: %02X, Y: %02X, Z: %02X",accel_data[i].x,accel_data[i].y,accel_data[i].z);
-		// 	LOG_INF("X: %02X, Y: %02X, Z: %02X",adv_mfg_data.samples[i*3],adv_mfg_data.samples[i*3+1],adv_mfg_data.samples[i*3+2]);
-		// }
-
-		// adv_mfg_data.num_ints += 1; // increment the data count
-
-		// bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0); // update adv data
-		// bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0); // start advertising
-		// k_sleep(K_MSEC(10)); // wait at least one cycle
-		// bt_le_adv_stop(); // stop advertising
-
-		// One Time Step for LSTM NN
-		// LSTM_ONE_TIME_STEP_BHAR();
-		// FC_BHAR();
 	}
 }
 
@@ -545,6 +537,8 @@ void thread_run_policy(void)
         static int val_mv;
         // 1. Read the ADC and convert to uJ
         // LOG_INF("---------- Time: %d ----------",current_time);
+		const struct device *cons2 = adc_channel.dev;
+        pm_device_action_run(cons2, PM_DEVICE_ACTION_RESUME);
         int8_t err = adc_read(adc_channel.dev, &sequence);
         if (err < 0) {
             LOG_ERR("Could not read (%d)", err);
@@ -553,19 +547,42 @@ void thread_run_policy(void)
         err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
         // val_mv = val_mv*4; // scale by voltage divider ratio
         // LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
-		if(val_mv >= 1750)
+
+		// =========== Check for state change ===========
+		if(sensor_mode == BATTERYLESS_MODE && val_mv < 1000)
 		{
-			// int_en.type = BMA400_FIFO_WM_INT_EN;
-			// int_en.conf = BMA400_ENABLE;
-			// bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
-			// bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-			// last_tx_done = false;
-			gpio_pin_set_dt(&hen_pin, 1);
+			// only battery powered mode can detect a voltage this low
+			reinit_observer();
 		}
-		// turn off LED to avoid going into cold start mode
-		if(val_mv < 1650)
+
+		// normal batteryless operation
+		if(sensor_mode == BATTERYLESS_MODE && val_mv >= 1550)
 		{
-			gpio_pin_set_dt(&hen_pin, 0);
+			const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
+            pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
+			const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+            pm_device_action_run(cons1, PM_DEVICE_ACTION_RESUME);
+
+            int_en.type = BMA400_FIFO_WM_INT_EN;
+            int_en.conf = BMA400_ENABLE;
+            bma400_set_power_mode(BMA400_MODE_NORMAL,&bma_sensor);
+            bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+            pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+            last_tx_done = false;
+		}
+
+		if(sensor_mode == OBSERVER_MODE)
+		{
+			// turn on LED to avoid saturating
+			if(val_mv > 1750)
+			{
+				gpio_pin_set_dt(&hen_pin, 1);
+			}
+			// turn off LED to avoid going into cold start mode
+			if(val_mv < 1650)
+			{
+				gpio_pin_set_dt(&hen_pin, 0);
+			}
 		}
     }
 }
@@ -573,59 +590,102 @@ K_THREAD_DEFINE(thread_run_policy_id, STACKSIZE, thread_run_policy, NULL, NULL, 
 K_TIMER_DEFINE(timer0, timer0_handler, NULL);
 
 
-
-
-int main(void)
+void reinit_observer()
 {
-	int err;
+	// Change the mode
+	sensor_mode = OBSERVER_MODE;
 
-	// Fix the BLE address
-	// bt_addr_le_t addr;
-    // err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
-    // err = bt_id_create(&addr, NULL);
+	// reinit the bma400 to single sample mode
+	bma400_soft_reset(&bma_sensor);
+	bma400_init(&bma_sensor);
+    init_read_lp();
 
-	// Enable BLE
+	// init the h_en pin
+	if (!device_is_ready(hen_pin.port)) {
+		return -1;
+	}
+	int err = gpio_pin_configure_dt(&hen_pin, GPIO_OUTPUT_LOW);
+	if (err < 0) {
+		return -1;
+	}
+
+	// Reenable BLE into different mode
+	bt_disable();
+
 	err = bt_enable(bt_ready);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (err %d)\n", err);
 		return -1;
 	}
+
+	// resume all peripherals
+	const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+    pm_device_action_run(cons1, PM_DEVICE_ACTION_RESUME);
+
+	const struct device *cons2 = DEVICE_DT_GET(DT_NODELABEL(spi1));
+    pm_device_action_run(cons2, PM_DEVICE_ACTION_RESUME);
+
+	const struct device *cons3 = adc_channel.dev;
+    pm_device_action_run(cons3, PM_DEVICE_ACTION_RESUME);
+
+	// Set the policy timer to faster interrupt frequency
+	k_timer_start(&timer0, K_MSEC(35), K_MSEC(35));
+}
+
+
+int main(void)
+{
+	// Sleep for a second to avoid dying on start
+	k_sleep(K_MSEC(1000));
+
+	// We assume batteryless mode and initialize in that way
+	int err;
+
+	// =================== BLE
+	// Fix the BLE address
+	bt_addr_le_t addr;
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AD", "random", &addr);
+    err = bt_id_create(&addr, NULL);
+
+	// Enable BLE
+    err = bt_enable(NULL);
+    if (err) {
+        LOG_ERR("Bluetooth init failed (err %d)\n", err);
+        return -1;
+    }
 	
+	// =================== SPI
 	/* STEP 10.1 - Check if SPI and GPIO devices are ready */
 	err = spi_is_ready_dt(&spispec);
 	if (!err) {
 		LOG_ERR("Error: SPI device is not ready, err: %d", err);
 		return 0;
 	}
+	bma400_init(&bma_sensor);
+    init_fifo_watermark();
+    const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
+    pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
-	if (!device_is_ready(int_pin.port)) {
-		return -1;
-	}
-
-	err = gpio_pin_configure_dt(&int_pin, GPIO_INPUT);
-	if (err < 0) {
-		return -1;
-	}
-
-	if (!device_is_ready(hen_pin.port)) {
-		return -1;
-	}
-	err = gpio_pin_configure_dt(&hen_pin, GPIO_OUTPUT_LOW);
-	if (err < 0) {
-		return -1;
-	}
-
-	/* STEP 3 - Configure the interrupt on the button's pin */
-	err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_EDGE_RISING);
-	// err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_LEVEL_ACTIVE);
-
-	/* STEP 6 - Initialize the static struct gpio_callback variable   */
-	gpio_init_callback(&int_cb_data, bma_int_handler, BIT(int_pin.pin));
-
-	/* STEP 7 - Add the callback function by calling gpio_add_callback()   */
-	gpio_add_callback(int_pin.port, &int_cb_data);
+	// =================== GPIO for bma_int
+    if (!device_is_ready(int_pin.port)) {
+        return -1;
+    }
+    err = gpio_pin_configure_dt(&int_pin, GPIO_INPUT);
+    if (err < 0) {
+        return -1;
+    }
+    /* STEP 3 - Configure the interrupt on the button's pin */
+    err = gpio_pin_interrupt_configure_dt(&int_pin, GPIO_INT_EDGE_RISING);
+    /* STEP 6 - Initialize the static struct gpio_callback variable   */
+    gpio_init_callback(&int_cb_data, bma_int_handler, BIT(int_pin.pin));
+    /* STEP 7 - Add the callback function by calling gpio_add_callback()   */
+    gpio_add_callback(int_pin.port, &int_cb_data);
+    // Need to reenable the gpio when we start the bma
+    const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+    pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
 
 
+	// =================== ADC
 	sequence.buffer = &adc_buf;
 	sequence.buffer_size = sizeof(adc_buf);
 
@@ -646,23 +706,12 @@ int main(void)
 		LOG_ERR("Could not initalize sequnce");
 		return 0;
 	}
-
-	LOG_INF("====================== APP START=======***************************");
-	bma400_init(&bma_sensor);
-	init_read_lp();
-	// init_fifo_watermark();
-
+	const struct device *cons2 = adc_channel.dev;
+    pm_device_action_run(cons2, PM_DEVICE_ACTION_SUSPEND);
 	
+	// Start the policy
+	k_timer_start(&timer0, K_MSEC(500), K_MSEC(500));
 
-	const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
-	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
-
-	// Do not disable GPIO, need it for interrupt
-	// const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
-	// pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
-	
-	k_timer_start(&timer0, K_MSEC(10), K_MSEC(10));
-	// gpio_pin_set_dt(&hen_pin, 1);
 	while(1){
 		k_sleep(K_FOREVER);
 	}
