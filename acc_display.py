@@ -8,9 +8,9 @@ import numpy as np
 # -----------------------
 # Configuration
 # -----------------------
-COM_PORT = 'COM7'
+COM_PORT = 'COM5'
 BAUD_RATE = 115200
-BUFFER_SECONDS = 10#60
+BUFFER_SECONDS = 5#60
 UPDATE_INTERVAL_MS = 10  # update every 100 ms
 
 # -----------------------
@@ -37,22 +37,22 @@ data_buffer_x_4 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS))
 data_buffer_y_4 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 data_buffer_z_4 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 
-data_buffer_x_5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
-data_buffer_y_5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
-data_buffer_z_5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
+# data_buffer_x_5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
+# data_buffer_y_5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
+# data_buffer_z_5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 
 time_buffer1 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 time_buffer2 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 time_buffer3 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 time_buffer4 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
-time_buffer5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
+# time_buffer5 = deque(maxlen=int(BUFFER_SECONDS * (1000 / UPDATE_INTERVAL_MS)))
 
 start_time = time.time()
 
 # -----------------------
 # Set up the plot
 # -----------------------
-fig, ax = plt.subplots(5,1,sharex=True,figsize=(12,7))
+fig, ax = plt.subplots(4,1,sharex=True,figsize=(8,7))
 line_x_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='X')  # add marker='o' for dots
 line_y_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='y')  # add marker='o' for dots
 line_z_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
@@ -69,17 +69,17 @@ line_x_4, = ax[3].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',lab
 line_y_4, = ax[3].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Y')  # add marker='o' for dots
 line_z_4, = ax[3].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
 
-line_x_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='X')  # add marker='o' for dots
-line_y_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Y')  # add marker='o' for dots
-line_z_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
+# line_x_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='X')  # add marker='o' for dots
+# line_y_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Y')  # add marker='o' for dots
+# line_z_5, = ax[4].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
 
 ax[-1].set_xlim(0, BUFFER_SECONDS)
 
-ax[0].set_ylim(-4.5, 4.5)  # adjust based on your sensor/data range
-ax[1].set_ylim(-4.5, 4.5)
-ax[2].set_ylim(-4.5, 4.5)
-ax[3].set_ylim(-4.5, 4.5)
-ax[4].set_ylim(-4.5, 4.5)
+ax[0].set_ylim(-3.5, 3.5)  # adjust based on your sensor/data range
+ax[1].set_ylim(-3.5, 3.5)
+ax[2].set_ylim(-3.5, 3.5)
+ax[3].set_ylim(-3.5, 3.5)
+# ax[4].set_ylim(-4.5, 4.5)
 
 ax[-1].set_xlabel("Time (s)")
 
@@ -104,9 +104,9 @@ ax[3].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
 ax[3].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[3].grid()
 
-ax[4].set_ylabel("G's")
-ax[4].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
-ax[4].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
+# ax[4].set_ylabel("G's")
+# ax[4].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
+# ax[4].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[4].grid()
 
 # ax[0].legend(loc="center left", bbox_to_anchor=(1, 0.5))
@@ -124,7 +124,7 @@ def update(frame):
         line_data = ser.readline().decode('utf-8').strip()
         # print(line_data)
         if len(line_data) == 0:
-            return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4, line_x_5,line_y_5, line_z_5
+            return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4 #, line_x_5,line_y_5, line_z_5
         # else:
         line_data = line_data.split('app: ')[1][:7]
         # if line_data == 'START':
@@ -230,17 +230,17 @@ def update(frame):
                 data_buffer_y_4.extend(list(read_bytes[1::3]))
                 data_buffer_z_4.extend(list(read_bytes[2::3]))
                 time_buffer4.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
-            elif sensor_id == 'AE':
-                data_buffer_x_5.append(np.nan)
-                data_buffer_y_5.append(np.nan)
-                data_buffer_z_5.append(np.nan)
-                time_buffer5.append(np.nan)
-                data_buffer_x_5.extend(list(read_bytes[0::3]))
-                data_buffer_y_5.extend(list(read_bytes[1::3]))
-                data_buffer_z_5.extend(list(read_bytes[2::3]))
-                time_buffer5.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
-                # print(time_buffer5)
-                print(current_time)
+            # elif sensor_id == 'AE':
+            #     data_buffer_x_5.append(np.nan)
+            #     data_buffer_y_5.append(np.nan)
+            #     data_buffer_z_5.append(np.nan)
+            #     time_buffer5.append(np.nan)
+            #     data_buffer_x_5.extend(list(read_bytes[0::3]))
+            #     data_buffer_y_5.extend(list(read_bytes[1::3]))
+            #     data_buffer_z_5.extend(list(read_bytes[2::3]))
+            #     time_buffer5.extend(list(current_time - np.linspace(0,.32,9)[::-1][1:]))
+            #     # print(time_buffer5)
+            #     print(current_time)
             # print(list(time_buffer)[-8:])
             # print(data_buffer_x)
             # print(data_buffer_y)
@@ -285,19 +285,19 @@ def update(frame):
         line_y_4.set_data(time_data, list(data_buffer_y_4))
         line_z_4.set_data(time_data, list(data_buffer_z_4))
 
-    if time_buffer5:
-        time_data = list(time_buffer5)
-        line_x_5.set_data(time_data, list(data_buffer_x_5))
-        line_y_5.set_data(time_data, list(data_buffer_y_5))
-        line_z_5.set_data(time_data, list(data_buffer_z_5))
+    # if time_buffer5:
+    #     time_data = list(time_buffer5)
+    #     line_x_5.set_data(time_data, list(data_buffer_x_5))
+    #     line_y_5.set_data(time_data, list(data_buffer_y_5))
+    #     line_z_5.set_data(time_data, list(data_buffer_z_5))
     
-    if time_buffer1 or time_buffer2 or time_buffer3 or time_buffer4 or time_buffer5:
+    if time_buffer1 or time_buffer2 or time_buffer3 or time_buffer4:# or time_buffer5:
         time_data1 = list(time_buffer1)
         time_data2 = list(time_buffer2)
         time_data3 = list(time_buffer3)
         time_data4 = list(time_buffer4)
-        time_data5 = list(time_buffer5)
-        lists = [time_data1,time_data2,time_data3,time_data4,time_data5]
+        # time_data5 = list(time_buffer5)
+        lists = [time_data1,time_data2,time_data3,time_data4]#,time_data5]
         # if len(time_data1) == 0:
         #     most_recent = time_data2[-1]
         # elif len(time_data2) == 0:
@@ -312,22 +312,22 @@ def update(frame):
             ax[1].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
             ax[2].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
             ax[3].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
-            ax[4].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
+            # ax[4].set_xlim(most_recent-BUFFER_SECONDS, most_recent)
         else:
             ax[0].set_xlim(0, BUFFER_SECONDS)
             ax[1].set_xlim(0, BUFFER_SECONDS)
             ax[2].set_xlim(0, BUFFER_SECONDS)
             ax[3].set_xlim(0, BUFFER_SECONDS)
-            ax[4].set_xlim(0, BUFFER_SECONDS)
+            # ax[4].set_xlim(0, BUFFER_SECONDS)
 
 
-    return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4, line_x_5,line_y_5, line_z_5
+    return line_x_1, line_y_1, line_z_1, line_x_2, line_y_2, line_z_2,line_x_3, line_y_3, line_z_3, line_x_4, line_y_4, line_z_4#, line_x_5,line_y_5, line_z_5
 
 
 # -----------------------
 # Animate
 # -----------------------
-ani = animation.FuncAnimation(fig, update, interval=UPDATE_INTERVAL_MS, blit=False)
+ani = animation.FuncAnimation(fig, update, interval=UPDATE_INTERVAL_MS, blit=True)
 
 plt.show()
 
