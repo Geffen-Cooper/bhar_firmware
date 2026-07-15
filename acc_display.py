@@ -52,7 +52,7 @@ start_time = time.time()
 # -----------------------
 # Set up the plot
 # -----------------------
-fig, ax = plt.subplots(4,1,sharex=True,figsize=(8,7))
+fig, ax = plt.subplots(4,1,sharex=True,figsize=(8,8))
 line_x_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='X')  # add marker='o' for dots
 line_y_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='y')  # add marker='o' for dots
 line_z_1, = ax[0].plot([], [], lw=2, marker='o', markersize=4, linestyle='-',label='Z')  # add marker='o' for dots
@@ -81,10 +81,15 @@ ax[2].set_ylim(-3.5, 3.5)
 ax[3].set_ylim(-3.5, 3.5)
 # ax[4].set_ylim(-4.5, 4.5)
 
+ax[0].set_title("Left Wrist", loc="left", fontweight="bold")
+ax[1].set_title("Right Wrist", loc="left", fontweight="bold")
+ax[2].set_title("Left Foot", loc="left", fontweight="bold")
+ax[3].set_title("Right Foot", loc="left", fontweight="bold")
+
 ax[-1].set_xlabel("Time (s)")
 
 ax[0].set_ylabel("G's")
-ax[0].set_title("Accelerometer Over Time")
+# ax[0].set_title("Accelerometer Over Time")
 ax[0].axhline(1,linestyle='--',c='k',lw=4,alpha=0.1,label='1G')
 ax[0].axhline(-1,linestyle='--',c='r',lw=4,alpha=0.1,label='-1G')
 # ax[0].grid()
