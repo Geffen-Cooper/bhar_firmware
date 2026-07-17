@@ -47,20 +47,22 @@ static struct bt_uuid_128 accel_char_uuid    = BT_UUID_INIT_128(BT_UUID_ACCEL_CH
 
 static uint8_t bhar_packet[5] = {0};
 
+static uint8_t got_feed = 0;
+
 static void accel_ccc_cfg_changed(const struct bt_gatt_attr *attr,uint16_t value){
 	bool notif_enabled = (value == BT_GATT_CCC_NOTIFY);
 	LOG_INF("Accel notifications %s\n",notif_enabled ? "enabled" : "disabled");
 }
 
-BT_GATT_SERVICE_DEFINE(accel_svc,
-	BT_GATT_PRIMARY_SERVICE(&accel_service_uuid),
-	BT_GATT_CHARACTERISTIC(&accel_char_uuid.uuid,
-			       BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_NONE,
-			       NULL, NULL, bhar_packet),
-	BT_GATT_CCC(accel_ccc_cfg_changed,
-		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
-);
+// BT_GATT_SERVICE_DEFINE(accel_svc,
+// 	BT_GATT_PRIMARY_SERVICE(&accel_service_uuid),
+// 	BT_GATT_CHARACTERISTIC(&accel_char_uuid.uuid,
+// 			       BT_GATT_CHRC_NOTIFY,
+// 			       BT_GATT_PERM_NONE,
+// 			       NULL, NULL, bhar_packet),
+// 	BT_GATT_CCC(accel_ccc_cfg_changed,
+// 		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
+// );
 
 static struct bt_conn *current_conn;
 
@@ -69,15 +71,23 @@ static const struct bt_data ad_connected[] = {
     BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 };
 
-static void connected(struct bt_conn *conn, uint8_t err)
-{
-	if (err) {
-		LOG_INF("Connection failed (err %u)\n", err);
-		return;
-	}
-	LOG_INF("Connected\n");
-	current_conn = bt_conn_ref(conn);
-}
+// static void connected(struct bt_conn *conn, uint8_t err)
+// {
+// 	// if (err) {
+// 	// 	LOG_INF("Connection failed (err %u)\n", err);
+// 	// 	return;
+// 	// }
+// 	// LOG_INF("Connected\n");
+// 	// current_conn = bt_conn_ref(conn);
+// 	for(int i = 0; i < 24; i++)
+// 	{
+// 		adv_mfg_data.samples[i] = 0xFF;
+// 	}
+// 	bt_le_adv_update_data(ad_tx_rx, ARRAY_SIZE(ad_tx_rx), NULL, 0); // update adv data
+	
+// 	got_feed = 1;
+// }
+static void connected(struct bt_conn *conn, uint8_t err);
 
 static void adv_work_handler(struct k_work *work)
 {
@@ -137,21 +147,21 @@ static void bt_ready(int err)
 }
 
 // for sending to android phone
-static void send_accel_notification(uint8_t x, uint8_t y, uint8_t z, uint16_t v){
-	if(!current_conn) return;
+// static void send_accel_notification(uint8_t x, uint8_t y, uint8_t z, uint16_t v){
+// 	if(!current_conn) return;
 
-	bhar_packet[0] = x;
-	bhar_packet[1] = y;
-	bhar_packet[2] = z;
-	bhar_packet[3] = (uint8_t)((v >> 8) & 0xFF); // MSB
-	bhar_packet[4] = (uint8_t)(v & 0xFF);        // LSB
+// 	bhar_packet[0] = x;
+// 	bhar_packet[1] = y;
+// 	bhar_packet[2] = z;
+// 	bhar_packet[3] = (uint8_t)((v >> 8) & 0xFF); // MSB
+// 	bhar_packet[4] = (uint8_t)(v & 0xFF);        // LSB
 	
-	int err = bt_gatt_notify(current_conn, &accel_svc.attrs[1],
-				 bhar_packet, sizeof(bhar_packet));
-	if (err) {
-		LOG_INF("Notify failed (err %d)\n", err);
-	}
-}
+// 	int err = bt_gatt_notify(current_conn, &accel_svc.attrs[1],
+// 				 bhar_packet, sizeof(bhar_packet));
+// 	if (err) {
+// 		LOG_INF("Notify failed (err %d)\n", err);
+// 	}
+// }
 
 // ============= Batteryless Mode =============
 #define COMPANY_ID_CODE 0x0059
@@ -170,10 +180,18 @@ struct adc_sequence sequence;
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
 static const struct bt_le_adv_param *adv_param =
-    BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
+    BT_LE_ADV_PARAM(BT_LE_ADV_OPT_SCANNABLE | BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
             32, /* Min Advertising Interval 250ms (400*0.625ms) */
             33, /* Max Advertising Interval 250.625ms (401*0.625ms) */
             NULL); /* Set to NULL for undirected advertising */
+
+static const struct bt_le_adv_param *adv_param_tx_rx =
+    BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
+            32, /* Min Advertising Interval 250ms (400*0.625ms) */
+            33, /* Max Advertising Interval 250.625ms (401*0.625ms) */
+            NULL); /* Set to NULL for undirected advertising */
+
+
 /* STEP 2.3 - Define and initialize a variable of type adv_mfg_data_type */
 static adv_mfg_data_type adv_mfg_data = {
     .company_code = COMPANY_ID_CODE,
@@ -183,6 +201,14 @@ static adv_mfg_data_type adv_mfg_data = {
                  0x13, 0x14, 0x15, 0x16, 0x17, 0x18 }
 };
 
+static unsigned char url_data[] ={0x17,'/','/','a','c','a','d','e','m','y','.',
+                                 'n','o','r','d','i','c','s','e','m','i','.',
+                                 'c','o','m'};
+static const struct bt_data scan_response_data[] = {
+        /* 4.2.3 Include the URL data in the scan response packet*/
+		BT_DATA(BT_DATA_URI, url_data,sizeof(url_data))
+};
+
 // TODO: I think this payload is too big, need to maybe remove or shorten the name
 static const struct bt_data ad_batteryless[] = {
     // BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
@@ -190,6 +216,69 @@ static const struct bt_data ad_batteryless[] = {
     /* STEP 3 - Include the Manufacturer Specific Data in the advertising packet. */
     BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
 };
+
+/*
+	SENSOR TX_RX ADV PACKET
+*/
+static const struct bt_data ad_tx_rx[] = {
+    /* 1. Flags: Takes 3 bytes total (1 length + 1 type + 1 data) */
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    
+    /* 2. Mfg Data: Takes 28 bytes total (1 length + 1 type + 26 data) */
+    BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
+};
+
+
+
+static void connected(struct bt_conn *conn, uint8_t err)
+{
+	// if (err) {
+	// 	LOG_INF("Connection failed (err %u)\n", err);
+	// 	return;
+	// }
+	// LOG_INF("Connected\n");
+	current_conn = bt_conn_ref(conn);
+	for(int i = 0; i < 24; i++)
+	{
+		adv_mfg_data.samples[i] = 0xFF;
+	}
+	bt_le_adv_update_data(ad_tx_rx, ARRAY_SIZE(ad_tx_rx), NULL, 0); // update adv data
+	bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+
+	
+	got_feed = 1;
+}
+
+static void adv_scanned_cb(struct bt_le_ext_adv *adv, 
+                           struct bt_le_ext_adv_scanned_info *info)
+{
+    // Extract the raw MAC address bytes (6 bytes)
+    const uint8_t *mac = info->addr->a.val;
+    
+    // Extract the address type (Public vs Random)
+    uint8_t type = info->addr->type;
+
+    // LOG_INF("--- Scan Request Detected! ---");
+    // LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
+    //         mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+    // LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
+    
+    // Process your connectionless address data trick here
+    // uint8_t feedback_cmd = mac[5]; 
+    // LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
+	for(int i = 0; i < 6; i++)
+	{
+		url_data[i+3] = mac[i];
+	}
+}
+
+struct bt_le_ext_adv *adv_set;
+static const struct bt_le_ext_adv_cb adv_callbacks = {
+    .scanned = adv_scanned_cb, // <-- Bound here
+	.sent = NULL,
+	.connected = NULL
+};
+
 
 // threads
 #define STACKSIZE 2048
@@ -327,11 +416,20 @@ void thread_read_bma400(void)
 					adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
 				}
 			}
-			bt_le_adv_update_data(ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // update adv data
+			// if(!got_feed)
+			// {
+			// 	bt_le_adv_update_data(ad_tx_rx, ARRAY_SIZE(ad_tx_rx), NULL, 0); // update adv data
+			// }
+			// bt_le_adv_update_data(ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // update adv data
+			
 			// gpio_pin_set_dt(&hen_pin, 1);
-			bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // start advertising
+			// bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // start advertising
+			// bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), scan_response_data, ARRAY_SIZE(scan_response_data)); // start advertising
+			bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+			bt_le_ext_adv_start(adv_set, NULL);
 			k_sleep(K_MSEC(18)); // wait at least one cycle
-			bt_le_adv_stop(); // stop advertising
+			// bt_le_adv_stop(); // stop advertising
+			bt_le_ext_adv_stop(adv_set);
 			last_tx_done = true;
 		}
 		else // observer mode
@@ -371,7 +469,7 @@ void thread_read_bma400(void)
 
 			uint16_t cap_volt_mv = (int)adc_buf;
 			adc_raw_to_millivolts_dt(&adc_channel, &cap_volt_mv);
-			send_accel_notification(acc_x,acc_y,acc_z,cap_volt_mv);
+			// send_accel_notification(acc_x,acc_y,acc_z,cap_volt_mv);
 		}
 	}
 }
@@ -644,7 +742,7 @@ int main(void)
 	// =================== BLE
 	// Fix the BLE address
 	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AD", "random", &addr);
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AE", "random", &addr);
     err = bt_id_create(&addr, NULL);
 
 	// Enable BLE
@@ -653,6 +751,18 @@ int main(void)
         LOG_ERR("Bluetooth init failed (err %d)\n", err);
         return -1;
     }
+
+	struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(
+        BT_LE_ADV_OPT_SCANNABLE | 
+		BT_LE_ADV_OPT_USE_IDENTITY |
+		BT_LE_ADV_OPT_NOTIFY_SCAN_REQ,
+        32,
+        33,
+        NULL
+    );
+
+	// bt_le_ext_adv_create(&adv_param, &adv_callbacks, &adv_set);
+	bt_le_ext_adv_create(&adv_param_, &adv_callbacks, &adv_set);
 	
 	// =================== SPI
 	/* STEP 10.1 - Check if SPI and GPIO devices are ready */
