@@ -17,6 +17,16 @@
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
+static bool parse_data_cb(struct bt_data *data, void *user_data)
+{
+    // data->type will tell you the BLE AD Data type (e.g., Manufacturer Data)
+    // data->data holds the payload bytes, data->data_len holds its length
+    
+    LOG_HEXDUMP_INF(data->data, data->data_len, "PARSED_FIELD_DATA");
+    
+    return true; // Keep parsing subsequent fields if there are multiple
+}
+
 
 static void scan_filter_match(struct bt_scan_device_info *device_info,
 			      			  struct bt_scan_filter_match *filter_match,
@@ -26,7 +36,10 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 	// first check the adv type
 	uint8_t adv_type = device_info->recv_info->adv_type;
 	uint8_t adv_len = device_info->adv_data->len;
-	LOG_INF("Adv Type: %02X, Length: %02X", adv_type);
+	LOG_INF("Adv Type: %02X, Length: %02X", adv_type, adv_len);
+
+	bt_data_parse(device_info->adv_data, parse_data_cb, NULL);
+
 	return;
 
 	// char addr_str[BT_ADDR_LE_STR_LEN];
@@ -46,13 +59,13 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 	// second byte is type
 	// 2 bytes nordic id
 	// 24 bytes acceleromter data
-	LOG_INF("START%02X",filter_match->addr.addr->a.val[0]);
+	LOG_INF("START: %02X",filter_match->addr.addr->a.val[0]);
 	// for(int i = 4; i < ad_len; i++)
 	// {
 	// 	LOG_INF("%02X", device_info->adv_data->data[i]);
 	// } 
-	LOG_HEXDUMP_INF(&device_info->adv_data->data[4],
-                ad_len - 4,
+	LOG_HEXDUMP_INF(&device_info->adv_data->data,
+                ad_len,
                 "DATA");
 	LOG_INF("END");
 	// LOG_INF("%02X%02X ", device_info->adv_data->data[14],device_info->adv_data->data[13]);
@@ -165,6 +178,10 @@ int main(void)
 	LOG_INF("Application Started ====================");
 	int err;
 
+	bt_addr_le_t addr;
+    err = bt_addr_le_from_str("DE:AD:BE:EF:FF:FF", "random", &addr);
+    err = bt_id_create(&addr, NULL);
+
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (err %d)\n", err);
@@ -173,7 +190,7 @@ int main(void)
 	LOG_INF("==================== BT INITIALIZED");
 	
 
-	scan_init();
+	scan_setup(true);
 
 	while(1){
 		k_sleep(K_FOREVER);
