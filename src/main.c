@@ -202,7 +202,7 @@ static adv_mfg_data_type adv_mfg_data = {
 };
 
 static unsigned char url_data[] ={0x17,'/','/','a','c','a','d','e','m','y','.',
-                                 'n','o','r','d','i','c','s','e','m','i','.',
+                                 'n','o','r','d','i','c','1','2','3','4','5','6','.','.',
                                  'c','o','m'};
 static const struct bt_data scan_response_data[] = {
         /* 4.2.3 Include the URL data in the scan response packet*/
@@ -266,10 +266,22 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
     // Process your connectionless address data trick here
     // uint8_t feedback_cmd = mac[5]; 
     // LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
-	for(int i = 0; i < 6; i++)
-	{
-		url_data[i+3] = mac[i];
-	}
+	// for(int i = 0; i < 6; i++)
+	// {
+	// 	url_data[i+3] = mac[i];
+	// }
+	url_data[17] = mac[0];
+	url_data[18] = mac[1];
+	url_data[19] = mac[2];
+	url_data[20] = mac[3];
+	url_data[21] = mac[4];
+	url_data[22] = mac[5];
+
+	url_data[24] = 0x62;
+	url_data[25] = 0x65;
+	url_data[26] = 0x65;
+	url_data[27] = 0x66;
+	// message is 28 bytes long (last idx is 28)
 }
 
 struct bt_le_ext_adv *adv_set;
