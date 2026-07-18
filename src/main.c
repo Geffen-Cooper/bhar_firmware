@@ -23,6 +23,12 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 			      			  bool connectable)
 {
 
+	// first check the adv type
+	uint8_t adv_type = device_info->recv_info->adv_type;
+	uint8_t adv_len = device_info->adv_data->len;
+	LOG_INF("Adv Type: %02X, Length: %02X", adv_type);
+	return;
+
 	// char addr_str[BT_ADDR_LE_STR_LEN];
 	// LOG_INF("%02X",filter_match->addr.addr->a.val[0]);
 	// LOG_INF("%02X",filter_match->addr.addr->a.val[1]);
@@ -55,24 +61,41 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
 
 
-static void scan_init(void)
+static void scan_setup(bool active)
 {
 	int err;
 
-	/* Use active scanning and disable duplicate filtering to handle any
-	 * devices that might update their advertising data at runtime. */
-	struct bt_le_scan_param scan_param = {
-		.type     = BT_LE_SCAN_TYPE_PASSIVE,
-		.interval = BT_GAP_SCAN_FAST_INTERVAL, // 5ms
-		.window   = BT_GAP_SCAN_FAST_INTERVAL, // 2.5ms
+	// scanning settings if want to provide feedback
+	// the catch with active scanning is that it will always send
+	// a scan request. So we will need to reinit the scanning settings
+	// to avoid submitting scan request every time.
+	struct bt_le_scan_param scan_param_active = {
+		.type     = BT_LE_SCAN_TYPE_ACTIVE,
+		.interval = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
+		.window   = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
 		.options  = BT_LE_SCAN_OPT_NONE
 	};
 
+	// scanning settings if don't need to provide feedback
+	struct bt_le_scan_param scan_param_passive = {
+		.type     = BT_LE_SCAN_TYPE_PASSIVE,
+		.interval = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
+		.window   = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
+		.options  = BT_LE_SCAN_OPT_NONE
+	};
+
+	// passive by default
 	struct bt_scan_init_param scan_init = {
 		.connect_if_match = 0,
-		.scan_param = &scan_param,
+		.scan_param = &scan_param_passive,
 		.conn_param = NULL
 	};
+
+	// if active, set the active settings
+	if(active)
+	{
+		scan_init.scan_param = &scan_param_active;
+	}
 
 	bt_scan_init(&scan_init);
 	bt_scan_cb_register(&scan_cb);
@@ -119,7 +142,20 @@ static void scan_init(void)
 		LOG_INF("Filters cannot be turned on (err %d)\n", err);
 	}
 
-	bt_scan_start(BT_LE_SCAN_TYPE_PASSIVE);
+	if(active)
+	{
+		bt_scan_start(BT_LE_SCAN_TYPE_ACTIVE);
+	}
+	else
+	{
+		bt_scan_start(BT_LE_SCAN_TYPE_PASSIVE);
+	}
+}
+
+static void alter_scan(bool active)
+{
+	bt_scan_stop();
+	scan_setup(active);
 }
 
 
