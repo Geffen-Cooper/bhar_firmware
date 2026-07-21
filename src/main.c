@@ -85,7 +85,7 @@ int main(void)
     }
 
     /* 3. Start Extended Advertising */
-    err = bt_le_ext_adv_start(adv_set, BT_LE_EXT_ADV_START_PARAM_DEFAULT);
+    err = bt_le_ext_adv_start(adv_set, NULL);
     if (err) {
         LOG_ERR("Failed to start extended advertising (err %d)", err);
         return -1;
