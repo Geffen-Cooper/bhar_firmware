@@ -10,6 +10,34 @@
 
 LOG_MODULE_REGISTER(peripheral_test, LOG_LEVEL_DBG);
 
+/* Cache configuration for deduplicating MAC addresses */
+#define MAC_CACHE_SIZE 16
+
+static bt_addr_le_t mac_cache[MAC_CACHE_SIZE];
+static uint8_t mac_cache_count = 0;
+static uint8_t mac_cache_head = 0;
+
+/* Helper function to check and insert new MAC addresses */
+static bool is_unique_mac(const bt_addr_le_t *addr)
+{
+    /* Check if the address is already in the cache */
+    for (uint8_t i = 0; i < mac_cache_count; i++) {
+        if (bt_addr_le_cmp(&mac_cache[i], addr) == 0) {
+            return false; /* Already logged */
+        }
+    }
+
+    /* Store the new MAC address in a ring-buffer fashion */
+    bt_addr_le_copy(&mac_cache[mac_cache_head], addr);
+    mac_cache_head = (mac_cache_head + 1) % MAC_CACHE_SIZE;
+
+    if (mac_cache_count < MAC_CACHE_SIZE) {
+        mac_cache_count++;
+    }
+
+    return true; /* New address! */
+}
+
 /* Scan Response Data payload */
 static const struct bt_data sd[] = {
     BT_DATA_BYTES(BT_DATA_NAME_COMPLETE, 'T', 'e', 's', 't', 'P', 'e', 'r', 'i', 'p', 'h'),
@@ -21,10 +49,13 @@ static struct bt_le_ext_adv *adv_set;
 /* Callback triggered whenever a Central sends a SCAN_REQ */
 static void scan_req_cb(struct bt_le_ext_adv *adv, const struct bt_le_ext_adv_scanned_info *info)
 {
-    char addr_str[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(info->addr, addr_str, sizeof(addr_str));
+    /* Only log if this address hasn't been seen recently */
+    if (is_unique_mac(info->addr)) {
+        char addr_str[BT_ADDR_LE_STR_LEN];
+        bt_addr_le_to_str(info->addr, addr_str, sizeof(addr_str));
 
-    LOG_INF(">>> RECEIVED SCAN_REQ from Central MAC: %s", addr_str);
+        LOG_INF(">>> RECEIVED NEW SCAN_REQ from Central MAC: %s", addr_str);
+    }
 }
 
 /* Extended advertising callbacks */
