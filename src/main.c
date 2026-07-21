@@ -9,8 +9,9 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
-#include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/bluetooth/crypto.h>
+
+/* Nordic's Scan Module Header */
 #include <bluetooth/scan.h>
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
@@ -56,44 +57,77 @@ static int hci_set_random_address(const bt_addr_t *addr)
     return bt_hci_cmd_send_sync(BT_HCI_OP_LE_SET_RANDOM_ADDRESS, buf, NULL);
 }
 
-/* ---------- Scan Callback ---------- */
-static void scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf_simple *buf)
+/* ---------- Nordic Scan Module Filter Callback ---------- */
+static void scan_filter_match(struct bt_scan_device_info *device_info,
+                              struct bt_scan_filter_match *filter_match,
+                              bool connectable)
 {
     char addr_str[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(info->addr, addr_str, sizeof(addr_str));
+    bt_addr_le_to_str(device_info->recv_info->addr, addr_str, sizeof(addr_str));
 
-    /* Check if packet is a Scan Response (0x04 or BT_GAP_ADV_TYPE_SCAN_RSP) */
-    if (info->adv_props & BT_GAP_ADV_PROP_SCAN_RESPONSE) {
-        LOG_INF(">>> Intercepted SCAN_RSP from: %s (RSSI: %d dBm)", addr_str, info->rssi);
+    if (device_info->recv_info->adv_props & BT_GAP_ADV_PROP_SCAN_RESPONSE) {
+        LOG_INF(">>> FILTER MATCH: SCAN_RSP from: %s (RSSI: %d dBm)", 
+                addr_str, device_info->recv_info->rssi);
     } else {
-        LOG_DBG("Discovered Advertising Packet from: %s", addr_str);
+        LOG_INF(">>> FILTER MATCH: Adv Packet from: %s (RSSI: %d dBm)", 
+                addr_str, device_info->recv_info->rssi);
     }
 }
 
-static struct bt_le_scan_cb scan_callbacks = {
-    .recv = scan_recv_cb,
-};
+/* Register the Nordic scan callback */
+BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
 
-/* ---------- Start Active Scanning ---------- */
-static int start_active_scan(void)
+/* ---------- Start Nordic Filtered Scan ---------- */
+static int start_filtered_scan(void)
 {
+    int err;
+
     struct bt_le_scan_param scan_param = {
-        .type       = BT_LE_SCAN_TYPE_ACTIVE,
-        .options    = BT_LE_SCAN_OPT_NONE, /* Don't filter duplicates */
-        .interval   = BT_GAP_SCAN_FAST_INTERVAL,
-        .window     = BT_GAP_SCAN_FAST_WINDOW,
+        .type     = BT_LE_SCAN_TYPE_ACTIVE,
+        .interval = BT_GAP_SCAN_FAST_INTERVAL,
+        .window   = BT_GAP_SCAN_FAST_WINDOW,
+        .options  = BT_LE_SCAN_OPT_NONE, /* Don't filter duplicates */
     };
 
-	bt_addr_le_t addr;
-    int err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
-	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
-	err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
-	if (err) {
-		LOG_INF("Filters cannot be turned on (err %d)\n", err);
-	}
+    struct bt_scan_init_param scan_init_params = {
+        .connect_if_match = 0,
+        .scan_param       = &scan_param,
+        .conn_param       = NULL
+    };
 
-    bt_le_scan_cb_register(&scan_callbacks);
-    return bt_le_scan_start(&scan_param, NULL);
+    /* 1. Initialize Nordic's scan module */
+    bt_scan_init(&scan_init_params);
+    bt_scan_cb_register(&scan_cb);
+
+    /* 2. Add Target Address Filter */
+    bt_addr_le_t addr;
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
+    if (err) {
+        LOG_ERR("Failed to parse filter address (err %d)", err);
+        return err;
+    }
+
+    err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+    if (err) {
+        LOG_ERR("Failed to add address filter (err %d)", err);
+        return err;
+    }
+
+    /* 3. Enable Address Filtering */
+    err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
+    if (err) {
+        LOG_ERR("Failed to enable address filter (err %d)", err);
+        return err;
+    }
+
+    /* 4. Start Nordic Scanner (Do NOT use bt_le_scan_start here!) */
+    err = bt_scan_start(BT_LE_SCAN_TYPE_ACTIVE);
+    if (err) {
+        LOG_ERR("Failed to start Nordic scanner (err %d)", err);
+        return err;
+    }
+
+    return 0;
 }
 
 /* ---------- Main ---------- */
@@ -119,12 +153,12 @@ int main(void)
         return -1;
     }
 
-    err = start_active_scan();
+    err = start_filtered_scan();
     if (err) {
         LOG_ERR("Failed to start active scanning (err %d)", err);
         return -1;
     }
-    LOG_INF("Active scanning is live using generated RPA. Listening for responses...");
+    LOG_INF("Nordic Filtered Active Scanning live for FF:EE:DD:CC:BB:FF...");
 
     while (1) {
         k_sleep(K_FOREVER);
