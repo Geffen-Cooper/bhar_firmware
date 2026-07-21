@@ -22,7 +22,7 @@ static const uint8_t irk[16] = {
     0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F 
 };
 
-#define TEST_DATA_PAYLOAD 1234
+#define TEST_DATA_PAYLOAD 0xF0F0
 
 /* ---------- Simplified RPA construction ---------- */
 static void build_rpa(uint32_t data22, bt_addr_t *out_addr)
@@ -147,11 +147,11 @@ int main(void)
     LOG_INF("Generated Test MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
             rpa.val[5], rpa.val[4], rpa.val[3], rpa.val[2], rpa.val[1], rpa.val[0]);
 
-    err = hci_set_random_address(&rpa);
-    if (err) {
-        LOG_ERR("Failed to set random MAC address (err %d)", err);
-        return -1;
-    }
+    // err = hci_set_random_address(&rpa);
+    // if (err) {
+    //     LOG_ERR("Failed to set random MAC address (err %d)", err);
+    //     return -1;
+    // }
 
     err = start_filtered_scan();
     if (err) {
