@@ -11,6 +11,7 @@
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/bluetooth/crypto.h>
+#include <bluetooth/scan.h>
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
@@ -84,7 +85,7 @@ static int start_active_scan(void)
     };
 
 	bt_addr_le_t addr;
-    int err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+    int err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
 	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
 	err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
 	if (err) {
