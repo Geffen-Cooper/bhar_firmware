@@ -83,6 +83,14 @@ static int start_active_scan(void)
         .window     = BT_GAP_SCAN_FAST_WINDOW,
     };
 
+	bt_addr_le_t addr;
+    int err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
+	if (err) {
+		LOG_INF("Filters cannot be turned on (err %d)\n", err);
+	}
+
     bt_le_scan_cb_register(&scan_callbacks);
     return bt_le_scan_start(&scan_param, NULL);
 }
