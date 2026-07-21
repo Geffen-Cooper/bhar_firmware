@@ -17,7 +17,7 @@ static const struct bt_data sd[] = {
 
 /* Advertising parameters: Scannable, Non-Connectable, Fast Interval */
 static struct bt_le_adv_param adv_params = BT_LE_ADV_PARAM_INIT(
-    BT_LE_ADV_OPT_SCANNABLE, 
+    BT_LE_ADV_OPT_SCANNABLE | BT_LE_ADV_OPT_USE_IDENTITY, 
     BT_LE_ADV_INTERVAL_MIN, 
     BT_LE_ADV_INTERVAL_MAX, 
     NULL
@@ -42,6 +42,11 @@ int main(void)
     int err;
 
     LOG_INF("=== Starting Minimal Test Peripheral ===");
+
+	// Fix the BLE address
+	bt_addr_le_t addr;
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
+    err = bt_id_create(&addr, NULL);
 
     err = bt_enable(NULL);
     if (err) {
