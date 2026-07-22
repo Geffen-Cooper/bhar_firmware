@@ -137,6 +137,19 @@ int main(void)
     bt_addr_t rpa;
     int err;
 
+	bt_addr_le_t addr;
+    err = bt_addr_le_from_str("FF:11:11:11:11:FF", "random", &addr);
+    if (err) {
+        LOG_ERR("Failed to parse static address (err %d)", err);
+        return -1;
+    }
+
+    err = bt_id_create(&addr, NULL);
+    if (err < 0) {
+        LOG_ERR("Failed to create identity address (err %d)", err);
+        return -1;
+    }
+
     err = bt_enable(NULL);
     if (err) {
         LOG_ERR("Bluetooth init failed (err %d)", err);
@@ -152,6 +165,7 @@ int main(void)
     //     LOG_ERR("Failed to set random MAC address (err %d)", err);
     //     return -1;
     // }
+	
 
     err = start_filtered_scan();
     if (err) {
