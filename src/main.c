@@ -130,56 +130,95 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL, NULL, NULL);
 
 /* ---------- Start Nordic Filtered Scan ---------- */
-static int start_filtered_scan(void)
+static void scan_setup(bool active)
 {
-    int err;
+	int err;
 
-    struct bt_le_scan_param scan_param = {
-        .type     = BT_LE_SCAN_TYPE_ACTIVE,
-        .interval = BT_GAP_SCAN_FAST_INTERVAL,
-        .window   = BT_GAP_SCAN_FAST_WINDOW,
-        .options  = BT_LE_SCAN_OPT_NONE, /* Don't filter duplicates */
-    };
+	// scanning settings if want to provide feedback
+	// the catch with active scanning is that it will always send
+	// a scan request. So we will need to reinit the scanning settings
+	// to avoid submitting scan request every time.
+	struct bt_le_scan_param scan_param_active = {
+		.type     = BT_LE_SCAN_TYPE_ACTIVE,
+		.interval = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
+		.window   = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
+		.options  = BT_LE_SCAN_OPT_NONE
+	};
 
-    struct bt_scan_init_param scan_init_params = {
-        .connect_if_match = 0,
-        .scan_param       = &scan_param,
-        .conn_param       = NULL
-    };
+	// scanning settings if don't need to provide feedback
+	struct bt_le_scan_param scan_param_passive = {
+		.type     = BT_LE_SCAN_TYPE_PASSIVE,
+		.interval = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
+		.window   = BT_GAP_SCAN_FAST_INTERVAL, // 60ms
+		.options  = BT_LE_SCAN_OPT_NONE
+	};
 
-    /* 1. Initialize Nordic's scan module */
-    bt_scan_init(&scan_init_params);
-    bt_scan_cb_register(&scan_cb);
+	// passive by default
+	struct bt_scan_init_param scan_init = {
+		.connect_if_match = 0,
+		.scan_param = &scan_param_passive,
+		.conn_param = NULL
+	};
 
-    /* 2. Add Target Address Filter */
-    bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
-    if (err) {
-        LOG_ERR("Failed to parse filter address (err %d)", err);
-        return err;
-    }
+	// if active, set the active settings
+	if(active)
+	{
+		scan_init.scan_param = &scan_param_active;
+	}
 
-    err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
-    if (err) {
-        LOG_ERR("Failed to add address filter (err %d)", err);
-        return err;
-    }
+	bt_scan_init(&scan_init);
+	bt_scan_cb_register(&scan_cb);
 
-    /* 3. Enable Address Filtering */
-    err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
-    if (err) {
-        LOG_ERR("Failed to enable address filter (err %d)", err);
-        return err;
-    }
+	bt_addr_le_t addr;
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
 
-    /* 4. Start Nordic Scanner (Do NOT use bt_le_scan_start here!) */
-    err = bt_scan_start(BT_LE_SCAN_TYPE_ACTIVE);
-    if (err) {
-        LOG_ERR("Failed to start Nordic scanner (err %d)", err);
-        return err;
-    }
+	// set a second filter
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AB", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
 
-    return 0;
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AC", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
+
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
+
+	err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AE", "random", &addr);
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
+	if (err) {
+		LOG_INF("Scanning filters cannot be set (err %d)\n", err);
+		return;
+	}
+
+	err = bt_scan_filter_enable(BT_SCAN_ADDR_FILTER, false);
+	if (err) {
+		LOG_INF("Filters cannot be turned on (err %d)\n", err);
+	}
+
+	if(active)
+	{
+		bt_scan_start(BT_LE_SCAN_TYPE_ACTIVE);
+	}
+	else
+	{
+		bt_scan_start(BT_LE_SCAN_TYPE_PASSIVE);
+	}
 }
 
 /* ---------- Main ---------- */
@@ -190,13 +229,9 @@ int main(void)
     int err;
 
 	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FE:BB:CC:DD:EE:FE", "random", &addr);
-    if (err) {
-        LOG_ERR("Failed to parse static address (err %d)", err);
-        return -1;
-    }
-
+    err = bt_addr_le_from_str("DE:AD:BE:EF:FF:FF", "random", &addr);
     err = bt_id_create(&addr, NULL);
+
     if (err < 0) {
         LOG_ERR("Failed to create identity address (err %d)", err);
         return -1;
@@ -208,9 +243,9 @@ int main(void)
         return -1;
     }
 
-    build_rpa(TEST_DATA_PAYLOAD, &rpa);
-    LOG_INF("Generated Test MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
-            rpa.val[5], rpa.val[4], rpa.val[3], rpa.val[2], rpa.val[1], rpa.val[0]);
+    // build_rpa(TEST_DATA_PAYLOAD, &rpa);
+    // LOG_INF("Generated Test MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
+    //         rpa.val[5], rpa.val[4], rpa.val[3], rpa.val[2], rpa.val[1], rpa.val[0]);
 
     // err = hci_set_random_address(&rpa);
     // if (err) {
@@ -219,11 +254,12 @@ int main(void)
     // }
 	
 
-    err = start_filtered_scan();
-    if (err) {
-        LOG_ERR("Failed to start active scanning (err %d)", err);
-        return -1;
-    }
+    // err = start_filtered_scan();
+	scan_setup(true);
+    // if (err) {
+    //     LOG_ERR("Failed to start active scanning (err %d)", err);
+    //     return -1;
+    // }
     LOG_INF("Nordic Filtered Active Scanning live for FF:EE:DD:CC:BB:FF...");
 
     while (1) {
