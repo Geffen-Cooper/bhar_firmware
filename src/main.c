@@ -58,20 +58,72 @@ static int hci_set_random_address(const bt_addr_t *addr)
 }
 
 /* ---------- Nordic Scan Module Filter Callback ---------- */
-static void scan_filter_match(struct bt_scan_device_info *device_info,
-                              struct bt_scan_filter_match *filter_match,
-                              bool connectable)
-{
-    char addr_str[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(device_info->recv_info->addr, addr_str, sizeof(addr_str));
+// static void scan_filter_match(struct bt_scan_device_info *device_info,
+//                               struct bt_scan_filter_match *filter_match,
+//                               bool connectable)
+// {
+//     char addr_str[BT_ADDR_LE_STR_LEN];
+//     bt_addr_le_to_str(device_info->recv_info->addr, addr_str, sizeof(addr_str));
 
-    if (device_info->recv_info->adv_props & BT_GAP_ADV_PROP_SCAN_RESPONSE) {
-        LOG_INF(">>> FILTER MATCH: SCAN_RSP from: %s (RSSI: %d dBm)", 
-                addr_str, device_info->recv_info->rssi);
-    } else {
-        LOG_INF(">>> FILTER MATCH: Adv Packet from: %s (RSSI: %d dBm)", 
-                addr_str, device_info->recv_info->rssi);
-    }
+//     if (device_info->recv_info->adv_props & BT_GAP_ADV_PROP_SCAN_RESPONSE) {
+//         LOG_INF(">>> FILTER MATCH: SCAN_RSP from: %s (RSSI: %d dBm)", 
+//                 addr_str, device_info->recv_info->rssi);
+//     } else {
+//         LOG_INF(">>> FILTER MATCH: Adv Packet from: %s (RSSI: %d dBm)", 
+//                 addr_str, device_info->recv_info->rssi);
+//     }
+// }
+static bool parse_data_cb(struct bt_data *data, void *user_data)
+{
+    // data->type will tell you the BLE AD Data type (e.g., Manufacturer Data)
+    // data->data holds the payload bytes, data->data_len holds its length
+    
+    LOG_HEXDUMP_INF(data->data, data->data_len, "PARSED_FIELD_DATA");
+    
+    return true; // Keep parsing subsequent fields if there are multiple
+}
+
+static void scan_filter_match(struct bt_scan_device_info *device_info,
+			      			  struct bt_scan_filter_match *filter_match,
+			      			  bool connectable)
+{
+
+	// first check the adv type
+	uint8_t adv_type = device_info->recv_info->adv_type;
+	uint8_t adv_len = device_info->adv_data->len;
+	LOG_INF("Adv Type: %02X, Length: %02X", adv_type, adv_len);
+
+	bt_data_parse(device_info->adv_data, parse_data_cb, NULL);
+
+	return;
+
+	// char addr_str[BT_ADDR_LE_STR_LEN];
+	// LOG_INF("%02X",filter_match->addr.addr->a.val[0]);
+	// LOG_INF("%02X",filter_match->addr.addr->a.val[1]);
+	// LOG_INF("%02X",filter_match->addr.addr->a.val[2]);
+	// bt_addr_le_to_str(&filter_match->addr.addr, addr_str, sizeof(addr_str));
+
+	// LOG_INF("Matched filtered address: %s", addr_str);
+
+    struct bt_data *ad;
+    int ad_len = device_info->adv_data->len;
+
+    // LOG_INF("Advertising data (%d bytes): ", ad_len);
+	// 28 bytes total
+	// first byte is length (says 27)
+	// second byte is type
+	// 2 bytes nordic id
+	// 24 bytes acceleromter data
+	LOG_INF("START: %02X",filter_match->addr.addr->a.val[0]);
+	// for(int i = 4; i < ad_len; i++)
+	// {
+	// 	LOG_INF("%02X", device_info->adv_data->data[i]);
+	// } 
+	LOG_HEXDUMP_INF(&device_info->adv_data->data,
+                ad_len,
+                "DATA");
+	LOG_INF("END");
+	// LOG_INF("%02X%02X ", device_info->adv_data->data[14],device_info->adv_data->data[13]);
 }
 
 /* Register the Nordic scan callback */
