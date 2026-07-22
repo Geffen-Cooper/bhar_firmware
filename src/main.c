@@ -5,8 +5,11 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/bluetooth/addr.h>
 #include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/hci.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/gap.h>
 
 LOG_MODULE_REGISTER(peripheral_test, LOG_LEVEL_DBG);
 
@@ -43,6 +46,8 @@ static const struct bt_data ad_batteryless[] = {
     BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
 };
 
+struct bt_le_ext_adv *adv_set;
+
 static void adv_scanned_cb(struct bt_le_ext_adv *adv, 
                            struct bt_le_ext_adv_scanned_info *info)
 {
@@ -52,10 +57,10 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
     // Extract the address type (Public vs Random)
     uint8_t type = info->addr->type;
 
-    // LOG_INF("--- Scan Request Detected! ---");
-    // LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
-    //         mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-    // LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
+    LOG_INF("--- Scan Request Detected! ---");
+    LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
+            mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+    LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
     
     // Process your connectionless address data trick here
     // uint8_t feedback_cmd = mac[5]; 
@@ -76,9 +81,20 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 	url_data[26] = 0x65;
 	url_data[27] = 0x66;
 	// message is 28 bytes long (last idx is 28)
+
+	// bt_le_ext_adv_stop(adv_set);
+	// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+	// bt_le_ext_adv_start(adv_set, NULL);
+
+	bt_le_ext_adv_stop(adv_set);
+	k_sleep(K_MSEC(18));
+
+	bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+	bt_le_ext_adv_start(adv_set, NULL);
+	
 }
 
-struct bt_le_ext_adv *adv_set;
+
 static const struct bt_le_ext_adv_cb adv_callbacks = {
     .scanned = adv_scanned_cb, // <-- Bound here
 	.sent = NULL,
@@ -91,16 +107,6 @@ static const struct bt_le_ext_adv_cb adv_callbacks = {
 //     .sent      = NULL,
 //     .connected = NULL,
 // };
-
-/* Extended Advertising Parameters with SCAN_REQ notification enabled */
-static struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(
-    BT_LE_ADV_OPT_SCANNABLE | 
-    BT_LE_ADV_OPT_USE_IDENTITY | 
-    BT_LE_ADV_OPT_NOTIFY_SCAN_REQ,
-    32,   /* ~20ms interval */
-    33,   /* ~20.625ms interval */
-    NULL
-);
 
 int main(void)
 {
