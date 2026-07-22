@@ -49,13 +49,16 @@ static struct bt_le_ext_adv *adv_set;
 /* Callback triggered whenever a Central sends a SCAN_REQ */
 static void scan_req_cb(struct bt_le_ext_adv *adv, const struct bt_le_ext_adv_scanned_info *info)
 {
-    /* Only log if this address hasn't been seen recently */
-    if (is_unique_mac(info->addr)) {
-        char addr_str[BT_ADDR_LE_STR_LEN];
-        bt_addr_le_to_str(info->addr, addr_str, sizeof(addr_str));
+    // /* Only log if this address hasn't been seen recently */
+    // if (is_unique_mac(info->addr)) {
+    //     char addr_str[BT_ADDR_LE_STR_LEN];
+    //     bt_addr_le_to_str(info->addr, addr_str, sizeof(addr_str));
 
-        LOG_INF(">>> RECEIVED NEW SCAN_REQ from Central MAC: %s", addr_str);
-    }
+    //     LOG_INF(">>> RECEIVED NEW SCAN_REQ from Central MAC: %s", addr_str);
+    // }
+	const uint8_t *mac = info->addr->a.val;
+	LOG_INF("MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 /* Extended advertising callbacks */
