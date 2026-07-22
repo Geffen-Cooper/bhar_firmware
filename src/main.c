@@ -228,9 +228,9 @@ int main(void)
     bt_addr_t rpa;
     int err;
 
-	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("DE:AD:BE:EF:FF:FF", "random", &addr);
-    err = bt_id_create(&addr, NULL);
+	// bt_addr_le_t addr;
+    // err = bt_addr_le_from_str("DE:AD:BE:EF:FF:FF", "random", &addr);
+    // err = bt_id_create(&addr, NULL);
 
     if (err < 0) {
         LOG_ERR("Failed to create identity address (err %d)", err);
@@ -243,15 +243,15 @@ int main(void)
         return -1;
     }
 
-    // build_rpa(TEST_DATA_PAYLOAD, &rpa);
-    // LOG_INF("Generated Test MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
-    //         rpa.val[5], rpa.val[4], rpa.val[3], rpa.val[2], rpa.val[1], rpa.val[0]);
+    build_rpa(TEST_DATA_PAYLOAD, &rpa);
+    LOG_INF("Generated Test MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
+            rpa.val[5], rpa.val[4], rpa.val[3], rpa.val[2], rpa.val[1], rpa.val[0]);
 
-    // err = hci_set_random_address(&rpa);
-    // if (err) {
-    //     LOG_ERR("Failed to set random MAC address (err %d)", err);
-    //     return -1;
-    // }
+    err = hci_set_random_address(&rpa);
+    if (err) {
+        LOG_ERR("Failed to set random MAC address (err %d)", err);
+        return -1;
+    }
 	
 
     // err = start_filtered_scan();
