@@ -190,7 +190,7 @@ int main(void)
     int err;
 
 	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:11:11:11:11:FF", "random", &addr);
+    err = bt_addr_le_from_str("FE:BB:CC:DD:EE:FE", "random", &addr);
     if (err) {
         LOG_ERR("Failed to parse static address (err %d)", err);
         return -1;
