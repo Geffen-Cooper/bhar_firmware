@@ -57,7 +57,7 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
     // Extract the address type (Public vs Random)
     uint8_t type = info->addr->type;
 
-	if((mac[0] == 0xFF) && (mac[5] == 0xDE))
+	if((mac[0] == 0xBB) && (mac[5] == 0x40))
 	{
 		LOG_INF("--- Scan Request Detected! ---");
 		LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
