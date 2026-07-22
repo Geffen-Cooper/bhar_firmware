@@ -10,8 +10,41 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/gap.h>
+#include <zephyr/bluetooth/hci_types.h>
+#include <zephyr/bluetooth/hci.h>
+
 
 LOG_MODULE_REGISTER(peripheral_test, LOG_LEVEL_DBG);
+
+static const uint8_t central_irk[16] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+}; /* same IRK the central uses */
+
+
+#define CENTRAL_ID_ADDR_STR "FF:EE:DD:CC:BB:EE" /* placeholder identity, same as before */
+
+static int hci_add_dev_to_resolving_list(const bt_addr_le_t *peer_id_addr,
+                                          const uint8_t *peer_irk)
+{
+    struct bt_hci_cp_le_add_dev_to_rl cp = {0};
+    bt_addr_le_copy(&cp.peer_id_addr, peer_id_addr);
+    memcpy(cp.peer_irk, peer_irk, 16);
+
+    struct net_buf *buf = bt_hci_cmd_create(BT_HCI_OP_LE_ADD_DEV_TO_RL, sizeof(cp));
+    if (!buf) return -ENOBUFS;
+    net_buf_add_mem(buf, &cp, sizeof(cp));
+    return bt_hci_cmd_send_sync(BT_HCI_OP_LE_ADD_DEV_TO_RL, buf, NULL);
+}
+
+static int hci_set_addr_resolution_enable(bool enable)
+{
+    struct bt_hci_cp_le_set_addr_res_enable cp = { .enable = enable };
+    struct net_buf *buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_ADDR_RES_ENABLE, sizeof(cp));
+    if (!buf) return -ENOBUFS;
+    net_buf_add_mem(buf, &cp, sizeof(cp));
+    return bt_hci_cmd_send_sync(BT_HCI_OP_LE_SET_ADDR_RES_ENABLE, buf, NULL);
+}
 
 
 /* STEP 2.2 - Declare the structure for your custom data  */
@@ -57,43 +90,43 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
     // Extract the address type (Public vs Random)
     uint8_t type = info->addr->type;
 
-	if((mac[0] == 0xBB) && (mac[5] == 0x40))
-	{
-		LOG_INF("--- Scan Request Detected! ---");
-		LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
-				mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-		LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
-		
-		// Process your connectionless address data trick here
-		// uint8_t feedback_cmd = mac[5]; 
-		// LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
-		// for(int i = 0; i < 6; i++)
-		// {
-		// 	url_data[i+3] = mac[i];
-		// }
-		url_data[17] = mac[0];
-		url_data[18] = mac[1];
-		url_data[19] = mac[2];
-		url_data[20] = mac[3];
-		url_data[21] = mac[4];
-		url_data[22] = mac[5];
+	// if((mac[0] == 0xBB) && (mac[5] == 0x40))
+	// {
+	LOG_INF("--- Scan Request Detected! ---");
+	LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
+			mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+	LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
+	
+	// Process your connectionless address data trick here
+	// uint8_t feedback_cmd = mac[5]; 
+	// LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
+	// for(int i = 0; i < 6; i++)
+	// {
+	// 	url_data[i+3] = mac[i];
+	// }
+	url_data[17] = mac[0];
+	url_data[18] = mac[1];
+	url_data[19] = mac[2];
+	url_data[20] = mac[3];
+	url_data[21] = mac[4];
+	url_data[22] = mac[5];
 
-		url_data[24] = 0x62;
-		url_data[25] = 0x65;
-		url_data[26] = 0x65;
-		url_data[27] = 0x66;
-		// message is 28 bytes long (last idx is 28)
+	url_data[24] = 0x62;
+	url_data[25] = 0x65;
+	url_data[26] = 0x65;
+	url_data[27] = 0x66;
+	// message is 28 bytes long (last idx is 28)
 
-		// bt_le_ext_adv_stop(adv_set);
-		// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-		// bt_le_ext_adv_start(adv_set, NULL);
+	// bt_le_ext_adv_stop(adv_set);
+	// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+	// bt_le_ext_adv_start(adv_set, NULL);
 
-		bt_le_ext_adv_stop(adv_set);
-		k_sleep(K_MSEC(18));
+	bt_le_ext_adv_stop(adv_set);
+	k_sleep(K_MSEC(18));
 
-		bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-		bt_le_ext_adv_start(adv_set, NULL);
-	}
+	bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+	bt_le_ext_adv_start(adv_set, NULL);
+	// }
 }
 
 
@@ -136,14 +169,51 @@ int main(void)
         return -1;
     }
 
+	/* --- new: teach controller to resolve the central's RPA, and
+     * restrict scan responses to it --- */
+    bt_addr_le_t central_id;
+    err = bt_addr_le_from_str(CENTRAL_ID_ADDR_STR, "random", &central_id);
+    if (err) {
+        LOG_ERR("Failed to parse central identity address (err %d)", err);
+        return -1;
+    }
+
+    err = hci_add_dev_to_resolving_list(&central_id, central_irk);
+    if (err) {
+        LOG_ERR("add to resolving list failed (err %d)", err);
+        return -1;
+    }
+
+    err = hci_set_addr_resolution_enable(true);
+    if (err) {
+        LOG_ERR("addr resolution enable failed (err %d)", err);
+        return -1;
+    }
+
+    err = bt_le_filter_accept_list_add(&central_id);
+    if (err) {
+        LOG_ERR("add to accept list failed (err %d)", err);
+        return -1;
+    }
+
     struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(
-        BT_LE_ADV_OPT_SCANNABLE | 
-		BT_LE_ADV_OPT_USE_IDENTITY |
-		BT_LE_ADV_OPT_NOTIFY_SCAN_REQ,
+        BT_LE_ADV_OPT_SCANNABLE |
+        BT_LE_ADV_OPT_USE_IDENTITY |
+        BT_LE_ADV_OPT_NOTIFY_SCAN_REQ |
+        BT_LE_ADV_OPT_FILTER_SCAN_REQ,   /* <-- added */
         32,
         33,
         NULL
     );
+
+    // struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(
+    //     BT_LE_ADV_OPT_SCANNABLE | 
+	// 	BT_LE_ADV_OPT_USE_IDENTITY |
+	// 	BT_LE_ADV_OPT_NOTIFY_SCAN_REQ,
+    //     32,
+    //     33,
+    //     NULL
+    // );
 
 	// bt_le_ext_adv_create(&adv_param, &adv_callbacks, &adv_set);
 	err = bt_le_ext_adv_create(&adv_param_, &adv_callbacks, &adv_set);
@@ -152,8 +222,16 @@ int main(void)
         return -1;
     }
 
-    bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-	bt_le_ext_adv_start(adv_set, NULL);
+    err = bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+	if (err) {
+        LOG_ERR("adv set failed (err %d)", err);
+        return -1;
+    }
+	err = bt_le_ext_adv_start(adv_set, NULL);
+	if (err) {
+        LOG_ERR("adv start failed (err %d)", err);
+        return -1;
+    }
 
     LOG_INF("Peripheral set FF:EE:DD:CC:BB:FF advertising and listening for SCAN_REQ...");
 
