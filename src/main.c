@@ -57,41 +57,43 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
     // Extract the address type (Public vs Random)
     uint8_t type = info->addr->type;
 
-    LOG_INF("--- Scan Request Detected! ---");
-    LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
-            mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-    LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
-    
-    // Process your connectionless address data trick here
-    // uint8_t feedback_cmd = mac[5]; 
-    // LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
-	// for(int i = 0; i < 6; i++)
-	// {
-	// 	url_data[i+3] = mac[i];
-	// }
-	url_data[17] = mac[0];
-	url_data[18] = mac[1];
-	url_data[19] = mac[2];
-	url_data[20] = mac[3];
-	url_data[21] = mac[4];
-	url_data[22] = mac[5];
+	if((mac[0] == 0xAA) && (mac[5] == 0xAA))
+	{
+		LOG_INF("--- Scan Request Detected! ---");
+		LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
+				mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+		LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
+		
+		// Process your connectionless address data trick here
+		// uint8_t feedback_cmd = mac[5]; 
+		// LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
+		// for(int i = 0; i < 6; i++)
+		// {
+		// 	url_data[i+3] = mac[i];
+		// }
+		url_data[17] = mac[0];
+		url_data[18] = mac[1];
+		url_data[19] = mac[2];
+		url_data[20] = mac[3];
+		url_data[21] = mac[4];
+		url_data[22] = mac[5];
 
-	url_data[24] = 0x62;
-	url_data[25] = 0x65;
-	url_data[26] = 0x65;
-	url_data[27] = 0x66;
-	// message is 28 bytes long (last idx is 28)
+		url_data[24] = 0x62;
+		url_data[25] = 0x65;
+		url_data[26] = 0x65;
+		url_data[27] = 0x66;
+		// message is 28 bytes long (last idx is 28)
 
-	// bt_le_ext_adv_stop(adv_set);
-	// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-	// bt_le_ext_adv_start(adv_set, NULL);
+		// bt_le_ext_adv_stop(adv_set);
+		// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+		// bt_le_ext_adv_start(adv_set, NULL);
 
-	bt_le_ext_adv_stop(adv_set);
-	k_sleep(K_MSEC(18));
+		bt_le_ext_adv_stop(adv_set);
+		k_sleep(K_MSEC(18));
 
-	bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-	bt_le_ext_adv_start(adv_set, NULL);
-	
+		bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+		bt_le_ext_adv_start(adv_set, NULL);
+	}
 }
 
 
