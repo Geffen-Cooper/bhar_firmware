@@ -167,7 +167,8 @@ static void scan_setup(bool active)
 	}
 
 	bt_scan_init(&scan_init);
-	bt_scan_cb_register(&scan_cb);
+	bt_scan_cb_register(&scan_cb); // need to move this since we will probably call scan setup multiple times and dont want to register callback multiple times
+	// probably what we want is a "start feedback" function which just alters the scanning mode
 
 	bt_addr_le_t addr;
     err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AA", "random", &addr);
@@ -232,10 +233,10 @@ int main(void)
     // err = bt_addr_le_from_str("DE:AD:BE:EF:FF:FF", "random", &addr);
     // err = bt_id_create(&addr, NULL);
 
-    if (err < 0) {
-        LOG_ERR("Failed to create identity address (err %d)", err);
-        return -1;
-    }
+    // if (err < 0) {
+    //     LOG_ERR("Failed to create identity address (err %d)", err);
+    //     return -1;
+    // }
 
     err = bt_enable(NULL);
     if (err) {
