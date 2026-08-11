@@ -100,6 +100,8 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
             g_raw_scan_req_mac[5], g_raw_scan_req_mac[4], g_raw_scan_req_mac[3],
             g_raw_scan_req_mac[2], g_raw_scan_req_mac[1], g_raw_scan_req_mac[0]);
 
+	LOG_INF("Count: %d", g_raw_scan_req_counter);
+
     /* Extract 24-bit prand from g_raw_scan_req_mac[3..5] */
     uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
                      ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
