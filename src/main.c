@@ -16,6 +16,23 @@
 
 LOG_MODULE_REGISTER(peripheral_test, LOG_LEVEL_DBG);
 
+/* 1. Define and initialize a binary semaphore with initial count 0 and max count 1 */
+K_SEM_DEFINE(work_sem, 0, 1);
+
+/* 2. Timer expiry function callback */
+void timer_expiry_function(struct k_timer *timer_id)
+{
+    /* Give the semaphore to unblock the worker thread */
+    k_sem_give(&work_sem);
+}
+
+/* 3. Define the timer and attach the callback function */
+K_TIMER_DEFINE(sec_timer, timer_expiry_function, NULL);
+
+/* 4. Worker thread definition */
+#define STACK_SIZE 1024
+#define PRIORITY 7
+
 static const uint8_t central_irk[16] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
     0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
@@ -80,6 +97,24 @@ static const struct bt_data ad_batteryless[] = {
 };
 
 struct bt_le_ext_adv *adv_set;
+
+
+void worker_thread_entry(void *p1, void *p2, void *p3)
+{
+    while (1) {
+        /* Wait indefinitely for the semaphore */
+        if (k_sem_take(&work_sem, K_FOREVER) == 0) {
+            bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+            bt_le_ext_adv_start(adv_set, NULL);
+            k_sleep(K_MSEC(18));
+            bt_le_ext_adv_stop(adv_set);
+        }
+    }
+}
+
+K_THREAD_DEFINE(worker_thread_id, STACK_SIZE, worker_thread_entry, 
+                NULL, NULL, NULL, PRIORITY, 0, 0);
+
 
 /* Declare external variables defined in Link Layer */
 // extern volatile uint8_t g_raw_scan_req_mac[6];
@@ -171,11 +206,11 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 	// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
 	// bt_le_ext_adv_start(adv_set, NULL);
 
-	bt_le_ext_adv_stop(adv_set);
-	k_sleep(K_MSEC(18));
+	// bt_le_ext_adv_stop(adv_set);
+	// k_sleep(K_MSEC(18));
 
-	bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-	bt_le_ext_adv_start(adv_set, NULL);
+	// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+	// bt_le_ext_adv_start(adv_set, NULL);
 	// }
 }
 
@@ -251,8 +286,8 @@ int main(void)
         BT_LE_ADV_OPT_USE_IDENTITY |
         BT_LE_ADV_OPT_NOTIFY_SCAN_REQ |
         BT_LE_ADV_OPT_FILTER_SCAN_REQ,   /* <-- added */
-        32,
-        33,
+        200,
+        200,
         NULL
     );
 
@@ -277,11 +312,12 @@ int main(void)
         LOG_ERR("adv set failed (err %d)", err);
         return -1;
     }
-	err = bt_le_ext_adv_start(adv_set, NULL);
-	if (err) {
-        LOG_ERR("adv start failed (err %d)", err);
-        return -1;
-    }
+	// err = bt_le_ext_adv_start(adv_set, NULL);
+	// if (err) {
+    //     LOG_ERR("adv start failed (err %d)", err);
+    //     return -1;
+    // }
+    k_timer_start(&sec_timer, K_SECONDS(1), K_SECONDS(1));
 
     LOG_INF("Peripheral set FF:EE:DD:CC:BB:FF advertising and listening for SCAN_REQ...");
 
