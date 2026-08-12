@@ -88,95 +88,95 @@ extern volatile uint32_t g_raw_scan_req_counter;
 static void adv_scanned_cb(struct bt_le_ext_adv *adv, 
                            struct bt_le_ext_adv_scanned_info *info)
 {
-	LOG_INF("--- Scan Request Verified by HW Accept List! ---");
+	// LOG_INF("--- Scan Request Verified by HW Accept List! ---");
     
-    /* info->addr will be the translated Identity MAC */
-    LOG_INF("Resolved Identity MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
-            info->addr->a.val[5], info->addr->a.val[4], info->addr->a.val[3],
-            info->addr->a.val[2], info->addr->a.val[1], info->addr->a.val[0]);
+    // /* info->addr will be the translated Identity MAC */
+    // LOG_INF("Resolved Identity MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
+    //         info->addr->a.val[5], info->addr->a.val[4], info->addr->a.val[3],
+    //         info->addr->a.val[2], info->addr->a.val[1], info->addr->a.val[0]);
 
-    /* g_raw_scan_req_mac holds the raw over-the-air MAC stashed directly in the ISR */
-    LOG_INF("Raw OTA MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
-            g_raw_scan_req_mac[5], g_raw_scan_req_mac[4], g_raw_scan_req_mac[3],
-            g_raw_scan_req_mac[2], g_raw_scan_req_mac[1], g_raw_scan_req_mac[0]);
+    // /* g_raw_scan_req_mac holds the raw over-the-air MAC stashed directly in the ISR */
+    // LOG_INF("Raw OTA MAC: %02X:%02X:%02X:%02X:%02X:%02X", 
+    //         g_raw_scan_req_mac[5], g_raw_scan_req_mac[4], g_raw_scan_req_mac[3],
+    //         g_raw_scan_req_mac[2], g_raw_scan_req_mac[1], g_raw_scan_req_mac[0]);
 
-	LOG_INF("Count: %d", g_raw_scan_req_counter);
+	// LOG_INF("Count: %d", g_raw_scan_req_counter);
 
-    /* Extract 24-bit prand from g_raw_scan_req_mac[3..5] */
-    uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
-                     ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
-                     ((uint32_t)g_raw_scan_req_mac[5] << 16);
+    // /* Extract 24-bit prand from g_raw_scan_req_mac[3..5] */
+    // uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
+    //                  ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
+    //                  ((uint32_t)g_raw_scan_req_mac[5] << 16);
 
-    /* Strip off top 2 RPA bits (0b01) */
-    uint32_t extracted_payload = prand & 0x3FFFFF;
+    // /* Strip off top 2 RPA bits (0b01) */
+    // uint32_t extracted_payload = prand & 0x3FFFFF;
 
-    LOG_INF("Extracted 22-bit Payload: 0x%06X (%u)", extracted_payload, extracted_payload);
+    // LOG_INF("Extracted 22-bit Payload: 0x%06X (%u)", extracted_payload, extracted_payload);
 
-    /* Put extracted payload into scan response payload */
-    url_data[17] = (uint8_t)(extracted_payload & 0xFF);         
-    url_data[18] = (uint8_t)((extracted_payload >> 8) & 0xFF);  
-    url_data[19] = (uint8_t)((extracted_payload >> 16) & 0x3F); 
+    // /* Put extracted payload into scan response payload */
+    // url_data[17] = (uint8_t)(extracted_payload & 0xFF);         
+    // url_data[18] = (uint8_t)((extracted_payload >> 8) & 0xFF);  
+    // url_data[19] = (uint8_t)((extracted_payload >> 16) & 0x3F); 
 
-    url_data[24] = 'b';
-    url_data[25] = 'e';
-    url_data[26] = 'e';
-    url_data[27] = 'f';
+    // url_data[24] = 'b';
+    // url_data[25] = 'e';
+    // url_data[26] = 'e';
+    // url_data[27] = 'f';
 
-    /* Update advertising set */
-    bt_le_ext_adv_stop(adv_set);
-    k_sleep(K_MSEC(18));
+    // /* Update advertising set */
+    // bt_le_ext_adv_stop(adv_set);
+    // k_sleep(K_MSEC(18));
 
-    bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless), 
-                           scan_response_data, ARRAY_SIZE(scan_response_data));
-    bt_le_ext_adv_start(adv_set, NULL);
-
-
+    // bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless), 
+    //                        scan_response_data, ARRAY_SIZE(scan_response_data));
+    // bt_le_ext_adv_start(adv_set, NULL);
 
 
 
-    // // Extract the raw MAC address bytes (6 bytes)
-    // const uint8_t *mac = info->addr->a.val;
+
+
+    // Extract the raw MAC address bytes (6 bytes)
+    const uint8_t *mac = info->addr->a.val;
     
-    // // Extract the address type (Public vs Random)
-    // uint8_t type = info->addr->type;
+    // Extract the address type (Public vs Random)
+    uint8_t type = info->addr->type;
 
-	// // if((mac[0] == 0xBB) && (mac[5] == 0x40))
-	// // {
-	// LOG_INF("--- Scan Request Detected! ---");
-	// LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
-	// 		mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-	// LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
+	// if((mac[0] == 0xBB) && (mac[5] == 0x40))
+	// {
+	LOG_INF("--- Scan Request Detected! ---");
+	LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
+			mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+	LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
 	
-	// // Process your connectionless address data trick here
-	// // uint8_t feedback_cmd = mac[5]; 
-	// // LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
-	// // for(int i = 0; i < 6; i++)
-	// // {
-	// // 	url_data[i+3] = mac[i];
-	// // }
-	// url_data[17] = mac[0];
-	// url_data[18] = mac[1];
-	// url_data[19] = mac[2];
-	// url_data[20] = mac[3];
-	// url_data[21] = mac[4];
-	// url_data[22] = mac[5];
+	// Process your connectionless address data trick here
+	// uint8_t feedback_cmd = mac[5]; 
+	// LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
+	// for(int i = 0; i < 6; i++)
+	// {
+	// 	url_data[i+3] = mac[i];
+	// }
+	url_data[17] = mac[0];
+	url_data[18] = mac[1];
+	url_data[19] = mac[2];
+	url_data[20] = mac[3];
+	url_data[21] = mac[4];
+	url_data[22] = mac[5];
 
-	// url_data[24] = 0x62;
-	// url_data[25] = 0x65;
-	// url_data[26] = 0x65;
-	// url_data[27] = 0x66;
-	// // message is 28 bytes long (last idx is 28)
-
-	// // bt_le_ext_adv_stop(adv_set);
-	// // bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-	// // bt_le_ext_adv_start(adv_set, NULL);
+	url_data[24] = 0x62;
+	url_data[25] = 0x65;
+	url_data[26] = 0x65;
+	url_data[27] = 0x66;
+	// message is 28 bytes long (last idx is 28)
 
 	// bt_le_ext_adv_stop(adv_set);
-	// k_sleep(K_MSEC(18));
-
 	// bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
 	// bt_le_ext_adv_start(adv_set, NULL);
-	// // }
+
+	bt_le_ext_adv_stop(adv_set);
+	k_sleep(K_MSEC(18));
+
+	bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+	bt_le_ext_adv_start(adv_set, NULL);
+	// }
 }
 
 
