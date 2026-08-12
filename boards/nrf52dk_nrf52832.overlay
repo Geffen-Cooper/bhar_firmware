@@ -1,10 +1,10 @@
-// / {
-//     chosen {
-//         zephyr,bt-hci = &hci_sw_ble;
-//     };
+/ {
+    chosen {
+        zephyr,bt-hci = &hci_sw_ble;
+    };
 
-//     hci_sw_ble: hci_sw_ble {
-//         compatible = "zephyr,bt-hci-ll-sw-split";
-//         status = "okay";
-//     };
-// };
+    hci_sw_ble: hci_sw_ble {
+        compatible = "zephyr,bt-hci-ll-sw-split";
+        status = "okay";
+    };
+};

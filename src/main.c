@@ -82,8 +82,8 @@ static const struct bt_data ad_batteryless[] = {
 struct bt_le_ext_adv *adv_set;
 
 /* Declare external variables defined in Link Layer */
-extern volatile uint8_t g_raw_scan_req_mac[6];
-extern volatile uint32_t g_raw_scan_req_counter;
+// extern volatile uint8_t g_raw_scan_req_mac[6];
+// extern volatile uint32_t g_raw_scan_req_counter;
 
 static void adv_scanned_cb(struct bt_le_ext_adv *adv, 
                            struct bt_le_ext_adv_scanned_info *info)
