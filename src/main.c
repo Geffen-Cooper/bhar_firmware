@@ -105,9 +105,13 @@ void worker_thread_entry(void *p1, void *p2, void *p3)
         /* Wait indefinitely for the semaphore */
         if (k_sem_take(&work_sem, K_FOREVER) == 0) {
             bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-            bt_le_ext_adv_start(adv_set, NULL);
-            k_sleep(K_MSEC(18));
-            bt_le_ext_adv_stop(adv_set);
+            struct bt_le_ext_adv_start_param start_param = {
+                .timeout = 0,
+                .num_events = 1, // Transmit once again
+            };
+            bt_le_ext_adv_start(adv_set, &start_param);
+            // k_sleep(K_MSEC(18));
+            // bt_le_ext_adv_stop(adv_set);
         }
     }
 }
@@ -115,14 +119,18 @@ void worker_thread_entry(void *p1, void *p2, void *p3)
 K_THREAD_DEFINE(worker_thread_id, STACK_SIZE, worker_thread_entry, 
                 NULL, NULL, NULL, PRIORITY, 0, 0);
 
-
+static void adv_sent_cb(struct bt_le_ext_adv *adv, struct bt_le_ext_adv_sent_info *info)
+{
+    LOG_INF("[%u] adv session ENDED, num_sent=%u", k_uptime_get_32(), info->num_sent);
+}
 /* Declare external variables defined in Link Layer */
-// extern volatile uint8_t g_raw_scan_req_mac[6];
+extern volatile uint8_t g_raw_scan_req_mac[6];
 // extern volatile uint32_t g_raw_scan_req_counter;
 
 static void adv_scanned_cb(struct bt_le_ext_adv *adv, 
                            struct bt_le_ext_adv_scanned_info *info)
 {
+    k_timer_stop(&sec_timer);
 	// LOG_INF("--- Scan Request Verified by HW Accept List! ---");
     
     // /* info->addr will be the translated Identity MAC */
@@ -177,7 +185,8 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 
 	// if((mac[0] == 0xBB) && (mac[5] == 0x40))
 	// {
-	LOG_INF("--- Scan Request Detected! ---");
+	// LOG_INF("--- Scan Request Detected! ---");
+    LOG_INF("[%u ms] --- Scan Request Detected! ---", k_uptime_get_32());
 	LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
 			mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
 	LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
@@ -189,12 +198,53 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 	// {
 	// 	url_data[i+3] = mac[i];
 	// }
-	url_data[17] = mac[0];
-	url_data[18] = mac[1];
-	url_data[19] = mac[2];
-	url_data[20] = mac[3];
-	url_data[21] = mac[4];
-	url_data[22] = mac[5];
+
+    /* Extract 24-bit prand from g_raw_scan_req_mac[3..5] */
+    // address is sent as   [40 F0 F0 C3 93 BB]
+    // address is received  [BB 93 C3 F0 F0 40]
+    // relavant 22 bits are [__ __ __ ** ** *-]
+    // prand below orders it correctly
+    uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
+                     ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
+                     ((uint32_t)g_raw_scan_req_mac[5] << 16);
+
+    /* Strip off top 2 RPA bits (0b01) */
+    uint32_t extracted_payload = prand & 0x3FFFFF;
+    if(extracted_payload == 0)
+    {
+        k_timer_start(&sec_timer, K_MSEC(500), K_MSEC(500));
+    }
+    else if(extracted_payload == 1)
+    {
+        k_timer_start(&sec_timer, K_MSEC(1000), K_MSEC(1000));
+    }
+    else if(extracted_payload == 2)
+    {
+        k_timer_start(&sec_timer, K_MSEC(2000), K_MSEC(2000));
+    }
+    else if(extracted_payload == 3)
+    {
+        k_timer_start(&sec_timer, K_MSEC(4000), K_MSEC(4000));
+    }
+    else
+    {
+        k_timer_start(&sec_timer, K_MSEC(1000), K_MSEC(1000));
+    }
+
+    /* Put extracted payload into scan response payload */
+    // url_data[17] = (uint8_t)(0);         
+    // url_data[18] = (uint8_t)(0);  
+    // url_data[19] = (uint8_t)(0); 
+    // url_data[20] = (uint8_t)(extracted_payload & 0xFF);         
+    // url_data[21] = (uint8_t)((extracted_payload >> 8) & 0xFF);  
+    // url_data[22] = (uint8_t)((extracted_payload >> 16) & 0x3F); 
+
+	url_data[17] = g_raw_scan_req_mac[0];
+	url_data[18] = g_raw_scan_req_mac[1];
+	url_data[19] = g_raw_scan_req_mac[2];
+	url_data[20] = g_raw_scan_req_mac[3];
+	url_data[21] = g_raw_scan_req_mac[4];
+	url_data[22] = g_raw_scan_req_mac[5];
 
 	url_data[24] = 0x62;
 	url_data[25] = 0x65;
@@ -217,7 +267,7 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 
 static const struct bt_le_ext_adv_cb adv_callbacks = {
     .scanned = adv_scanned_cb, // <-- Bound here
-	.sent = NULL,
+	.sent = adv_sent_cb,
 	.connected = NULL
 };
 
@@ -286,8 +336,8 @@ int main(void)
         BT_LE_ADV_OPT_USE_IDENTITY |
         BT_LE_ADV_OPT_NOTIFY_SCAN_REQ |
         BT_LE_ADV_OPT_FILTER_SCAN_REQ,   /* <-- added */
-        200,
-        200,
+        32,
+        33,
         NULL
     );
 

@@ -1,7 +1,0 @@
-default: bhar
-build_dir: C:/nordic/bhar/build
-domains:
-  - name: bhar
-    build_dir: C:/nordic/bhar/build/bhar
-flash_order:
-  - bhar
