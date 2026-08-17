@@ -27,8 +27,6 @@
 #include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/bluetooth/hci.h>
 
-#include <sdc_hci_vs.h> // Nordic Vendor-Specific SoftDevice Controller API
-
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
 static const uint8_t central_irk[16] = {
@@ -77,7 +75,7 @@ static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_use
 struct bt_le_ext_adv *adv_set;
 
 /* Declare external variables defined in Link Layer */
-// extern volatile uint8_t g_raw_scan_req_mac[6];
+extern volatile uint8_t g_raw_scan_req_mac[6];
 
 static const struct bt_le_adv_param *adv_param =
     BT_LE_ADV_PARAM(BT_LE_ADV_OPT_SCANNABLE | BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
@@ -124,11 +122,10 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
                            struct bt_le_ext_adv_scanned_info *info)
 {
     k_timer_stop(&timer0);
-    // uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
-    //                  ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
-    //                  ((uint32_t)g_raw_scan_req_mac[5] << 16);
-    // uint32_t extracted_payload = prand & 0x3FFFFF;
-    uint32_t extracted_payload = 0;
+    uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
+                     ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
+                     ((uint32_t)g_raw_scan_req_mac[5] << 16);
+    uint32_t extracted_payload = prand & 0x3FFFFF;
 
     if(extracted_payload == 0)
     {
@@ -158,12 +155,12 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 	// url_data[20] = mac[3];
 	// url_data[21] = mac[4];
 	// url_data[22] = mac[5];
-    // url_data[17] = g_raw_scan_req_mac[0];
-    // url_data[18] = g_raw_scan_req_mac[1];
-    // url_data[19] = g_raw_scan_req_mac[2];
-    // url_data[20] = g_raw_scan_req_mac[3];
-    // url_data[21] = g_raw_scan_req_mac[4];
-    // url_data[22] = g_raw_scan_req_mac[5];
+    url_data[17] = g_raw_scan_req_mac[0];
+    url_data[18] = g_raw_scan_req_mac[1];
+    url_data[19] = g_raw_scan_req_mac[2];
+    url_data[20] = g_raw_scan_req_mac[3];
+    url_data[21] = g_raw_scan_req_mac[4];
+    url_data[22] = g_raw_scan_req_mac[5];
 
 
 	url_data[24] = 0x62;
@@ -551,11 +548,11 @@ int main(void)
         return -1;
     }
 
-    // bt_addr_le_t central_id;
-    // err = bt_addr_le_from_str(CENTRAL_ID_ADDR_STR, "random", &central_id);
-    // err = hci_add_dev_to_resolving_list(&central_id, central_irk);
-    // err = hci_set_addr_resolution_enable(true);
-    // err = bt_le_filter_accept_list_add(&central_id);
+    bt_addr_le_t central_id;
+    err = bt_addr_le_from_str(CENTRAL_ID_ADDR_STR, "random", &central_id);
+    err = hci_add_dev_to_resolving_list(&central_id, central_irk);
+    err = hci_set_addr_resolution_enable(true);
+    err = bt_le_filter_accept_list_add(&central_id);
 
 
 	// struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(

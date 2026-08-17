@@ -1,14 +1,14 @@
 /* STEP 2.1 - Create an overlay file for your board */
 
-// / {
-//     chosen {
-//         zephyr,bt-hci = &hci_sw_ble;
-//     };
-//     hci_sw_ble: hci_sw_ble {
-//         compatible = "zephyr,bt-hci-ll-sw-split";
-//         status = "okay";
-//     };
-// };
+/ {
+    chosen {
+        zephyr,bt-hci = &hci_sw_ble;
+    };
+    hci_sw_ble: hci_sw_ble {
+        compatible = "zephyr,bt-hci-ll-sw-split";
+        status = "okay";
+    };
+};
 
 /{
 	zephyr,user {
