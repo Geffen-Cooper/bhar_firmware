@@ -24,144 +24,39 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/gap.h>
 
+#include <zephyr/bluetooth/hci_types.h>
+#include <zephyr/bluetooth/hci.h>
+
+#include <sdc_hci_vs.h> // Nordic Vendor-Specific SoftDevice Controller API
+
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
 
-// Mode Flag, by default we assume batteryless
-// Only go into observer mode if we see voltage below 1V
-#define BATTERYLESS_MODE true
-#define OBSERVER_MODE false
-bool sensor_mode = BATTERYLESS_MODE;
+static const uint8_t central_irk[16] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+}; /* same IRK the central uses */
 
-
-// ============= Observer Mode =============
-#define DEVICE_NAME       "BHAR_04"
-#define DEVICE_NAME_LEN   (sizeof(DEVICE_NAME) - 1)
-#define BT_UUID_ACCEL_SERVICE_VAL \ 
-	BT_UUID_128_ENCODE(0x12345678,0x1234,0x5678,0x1234,0x1234567890ab)
-
-#define BT_UUID_ACCEL_CHAR_VAL \
-	BT_UUID_128_ENCODE(0x12345679,0x1234,0x5678,0x1234,0x1234567890ab)
-
-static struct bt_uuid_128 accel_service_uuid = BT_UUID_INIT_128(BT_UUID_ACCEL_SERVICE_VAL);
-static struct bt_uuid_128 accel_char_uuid    = BT_UUID_INIT_128(BT_UUID_ACCEL_CHAR_VAL);
-
-static uint8_t bhar_packet[5] = {0};
-
-static uint8_t got_feed = 0;
-
-static void accel_ccc_cfg_changed(const struct bt_gatt_attr *attr,uint16_t value){
-	bool notif_enabled = (value == BT_GATT_CCC_NOTIFY);
-	LOG_INF("Accel notifications %s\n",notif_enabled ? "enabled" : "disabled");
-}
-
-// BT_GATT_SERVICE_DEFINE(accel_svc,
-// 	BT_GATT_PRIMARY_SERVICE(&accel_service_uuid),
-// 	BT_GATT_CHARACTERISTIC(&accel_char_uuid.uuid,
-// 			       BT_GATT_CHRC_NOTIFY,
-// 			       BT_GATT_PERM_NONE,
-// 			       NULL, NULL, bhar_packet),
-// 	BT_GATT_CCC(accel_ccc_cfg_changed,
-// 		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
-// );
-
-static struct bt_conn *current_conn;
-
-static const struct bt_data ad_connected[] = {
-    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
-};
-
-// static void connected(struct bt_conn *conn, uint8_t err)
-// {
-// 	// if (err) {
-// 	// 	LOG_INF("Connection failed (err %u)\n", err);
-// 	// 	return;
-// 	// }
-// 	// LOG_INF("Connected\n");
-// 	// current_conn = bt_conn_ref(conn);
-// 	for(int i = 0; i < 24; i++)
-// 	{
-// 		adv_mfg_data.samples[i] = 0xFF;
-// 	}
-// 	bt_le_adv_update_data(ad_tx_rx, ARRAY_SIZE(ad_tx_rx), NULL, 0); // update adv data
-	
-// 	got_feed = 1;
-// }
-static void connected(struct bt_conn *conn, uint8_t err);
-
-static void adv_work_handler(struct k_work *work)
+#define CENTRAL_ID_ADDR_STR "FF:EE:DD:CC:BB:EE" /* placeholder identity, same as before */
+static int hci_add_dev_to_resolving_list(const bt_addr_le_t *peer_id_addr,
+                                          const uint8_t *peer_irk)
 {
-    int err;
-
-    /* Make sure advertising is stopped */
-    bt_le_adv_stop();
-
-    err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2,
-                          ad_connected, ARRAY_SIZE(ad_connected),
-                          NULL, 0);
-    if (err) {
-        LOG_ERR("Advertising restart failed (err %d)", err);
-    } else {
-        LOG_INF("Advertising restarted");
-    }
+    struct bt_hci_cp_le_add_dev_to_rl cp = {0};
+    bt_addr_le_copy(&cp.peer_id_addr, peer_id_addr);
+    memcpy(cp.peer_irk, peer_irk, 16);
+    struct net_buf *buf = bt_hci_cmd_create(BT_HCI_OP_LE_ADD_DEV_TO_RL, sizeof(cp));
+    if (!buf) return -ENOBUFS;
+    net_buf_add_mem(buf, &cp, sizeof(cp));
+    return bt_hci_cmd_send_sync(BT_HCI_OP_LE_ADD_DEV_TO_RL, buf, NULL);
 }
-
-static void adv_work_handler(struct k_work *work);
-K_WORK_DEFINE(adv_work, adv_work_handler);
-
-
-
-static void disconnected(struct bt_conn *conn, uint8_t reason)
+static int hci_set_addr_resolution_enable(bool enable)
 {
-	LOG_INF("Disconnected (reason 0x%02x)\n", reason);
-	if (current_conn) {
-		bt_conn_unref(current_conn);
-		current_conn = NULL;
-	}
-
-	// bt_le_adv_stop();
-	// k_sleep(K_MSEC(10));
-
-	k_work_submit(&adv_work);
+    struct bt_hci_cp_le_set_addr_res_enable cp = { .enable = enable };
+    struct net_buf *buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_ADDR_RES_ENABLE, sizeof(cp));
+    if (!buf) return -ENOBUFS;
+    net_buf_add_mem(buf, &cp, sizeof(cp));
+    return bt_hci_cmd_send_sync(BT_HCI_OP_LE_SET_ADDR_RES_ENABLE, buf, NULL);
 }
 
-BT_CONN_CB_DEFINE(conn_callbacks) = {
-	.connected = connected,
-	.disconnected = disconnected,
-};
-
-static void bt_ready(int err)
-{
-	if (err) {
-		LOG_INF("Bluetooth init failed (err %d)\n", err);
-		return;
-	}
-	LOG_INF("Bluetooth initialized\n");
-	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad_connected, ARRAY_SIZE(ad_connected),
-			      NULL, 0);
-	if (err) {
-		LOG_INF("Advertising failed to start (err %d)\n", err);
-		return;
-	}
-	LOG_INF("Advertising started\n");
-}
-
-// for sending to android phone
-// static void send_accel_notification(uint8_t x, uint8_t y, uint8_t z, uint16_t v){
-// 	if(!current_conn) return;
-
-// 	bhar_packet[0] = x;
-// 	bhar_packet[1] = y;
-// 	bhar_packet[2] = z;
-// 	bhar_packet[3] = (uint8_t)((v >> 8) & 0xFF); // MSB
-// 	bhar_packet[4] = (uint8_t)(v & 0xFF);        // LSB
-	
-// 	int err = bt_gatt_notify(current_conn, &accel_svc.attrs[1],
-// 				 bhar_packet, sizeof(bhar_packet));
-// 	if (err) {
-// 		LOG_INF("Notify failed (err %d)\n", err);
-// 	}
-// }
 
 // ============= Batteryless Mode =============
 #define COMPANY_ID_CODE 0x0059
@@ -178,6 +73,11 @@ typedef struct adv_mfg_data {
 struct adc_sequence sequence;
 
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
+
+struct bt_le_ext_adv *adv_set;
+
+/* Declare external variables defined in Link Layer */
+// extern volatile uint8_t g_raw_scan_req_mac[6];
 
 static const struct bt_le_adv_param *adv_param =
     BT_LE_ADV_PARAM(BT_LE_ADV_OPT_SCANNABLE | BT_LE_ADV_OPT_USE_IDENTITY, /* No options specified */
@@ -217,65 +117,54 @@ static const struct bt_data ad_batteryless[] = {
     BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
 };
 
-/*
-	SENSOR TX_RX ADV PACKET
-*/
-static const struct bt_data ad_tx_rx[] = {
-    /* 1. Flags: Takes 3 bytes total (1 length + 1 type + 1 data) */
-    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    
-    /* 2. Mfg Data: Takes 28 bytes total (1 length + 1 type + 26 data) */
-    BT_DATA(BT_DATA_MANUFACTURER_DATA, (unsigned char *)&adv_mfg_data, sizeof(adv_mfg_data)),
-};
-
-
-
-static void connected(struct bt_conn *conn, uint8_t err)
-{
-	// if (err) {
-	// 	LOG_INF("Connection failed (err %u)\n", err);
-	// 	return;
-	// }
-	// LOG_INF("Connected\n");
-	current_conn = bt_conn_ref(conn);
-	for(int i = 0; i < 24; i++)
-	{
-		adv_mfg_data.samples[i] = 0xFF;
-	}
-	bt_le_adv_update_data(ad_tx_rx, ARRAY_SIZE(ad_tx_rx), NULL, 0); // update adv data
-	bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-
-	
-	got_feed = 1;
-}
+static void timer0_handler(struct k_timer *dummy);
+K_TIMER_DEFINE(timer0, timer0_handler, NULL);
 
 static void adv_scanned_cb(struct bt_le_ext_adv *adv, 
                            struct bt_le_ext_adv_scanned_info *info)
 {
-    // Extract the raw MAC address bytes (6 bytes)
-    const uint8_t *mac = info->addr->a.val;
-    
-    // Extract the address type (Public vs Random)
-    uint8_t type = info->addr->type;
+    k_timer_stop(&timer0);
+    // uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
+    //                  ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
+    //                  ((uint32_t)g_raw_scan_req_mac[5] << 16);
+    // uint32_t extracted_payload = prand & 0x3FFFFF;
+    uint32_t extracted_payload = 0;
 
-    // LOG_INF("--- Scan Request Detected! ---");
-    // LOG_INF("Central MAC Address: %02x:%02x:%02x:%02x:%02x:%02x", 
-    //         mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-    // LOG_INF("Address Type: %s", type == BT_ADDR_LE_PUBLIC ? "Public" : "Random");
-    
-    // Process your connectionless address data trick here
-    // uint8_t feedback_cmd = mac[5]; 
-    // LOG_INF("Extracted Feedback Byte: 0x%02x", feedback_cmd);
-	// for(int i = 0; i < 6; i++)
-	// {
-	// 	url_data[i+3] = mac[i];
-	// }
-	url_data[17] = mac[0];
-	url_data[18] = mac[1];
-	url_data[19] = mac[2];
-	url_data[20] = mac[3];
-	url_data[21] = mac[4];
-	url_data[22] = mac[5];
+    if(extracted_payload == 0)
+    {
+        k_timer_start(&timer0, K_MSEC(500), K_MSEC(500));
+    }
+    else if(extracted_payload == 1)
+    {
+        k_timer_start(&timer0, K_MSEC(1000), K_MSEC(1000));
+    }
+    else if(extracted_payload == 2)
+    {
+        k_timer_start(&timer0, K_MSEC(2000), K_MSEC(2000));
+    }
+    else if(extracted_payload == 3)
+    {
+        k_timer_start(&timer0, K_MSEC(4000), K_MSEC(4000));
+    }
+    else
+    {
+        k_timer_start(&timer0, K_MSEC(500), K_MSEC(500));
+    }
+
+
+	// url_data[17] = mac[0];
+	// url_data[18] = mac[1];
+	// url_data[19] = mac[2];
+	// url_data[20] = mac[3];
+	// url_data[21] = mac[4];
+	// url_data[22] = mac[5];
+    // url_data[17] = g_raw_scan_req_mac[0];
+    // url_data[18] = g_raw_scan_req_mac[1];
+    // url_data[19] = g_raw_scan_req_mac[2];
+    // url_data[20] = g_raw_scan_req_mac[3];
+    // url_data[21] = g_raw_scan_req_mac[4];
+    // url_data[22] = g_raw_scan_req_mac[5];
+
 
 	url_data[24] = 0x62;
 	url_data[25] = 0x65;
@@ -284,7 +173,6 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 	// message is 28 bytes long (last idx is 28)
 }
 
-struct bt_le_ext_adv *adv_set;
 static const struct bt_le_ext_adv_cb adv_callbacks = {
     .scanned = adv_scanned_cb, // <-- Bound here
 	.sent = NULL,
@@ -362,127 +250,91 @@ void thread_read_bma400(void)
 	while(1){
 		// LOG_INF("In the read thread");
 		k_sem_take(&bma400_ready, K_FOREVER); // Sleep here if semaphore is at 0
-
-		if(sensor_mode == BATTERYLESS_MODE)
-		{
-			// Enable SPI
-			const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
-			pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
-
-			// read data from bma400 fifo
-			bma400_get_fifo_data(&fifo_frame, &bma_sensor);
-			uint16_t accel_frames_req = FIFO_SAMPLES;
-			bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
-
-			// after reading, disable the interrupt and put the bma400 to sleep
-			int_en.type = BMA400_FIFO_WM_INT_EN;
-			int_en.conf = BMA400_DISABLE;
-			int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
-			bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
-
-			// Disable SPI
-        	pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
-
-			// Disable GPIO
-			const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
-        	pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
-
-
-			// our accelerometer data is implicitly 8 bits but stored as 16 bits
-			// we have 12 bit on the acceleometer 0000 1234 5678 ABCD
-			// we grab the top 8 bit (1234 5678) -> 0000 1234 5678 0000, bottom 4 get zeroed out
-			// then when we put convert into int16_t we have 0000 1234 5678 0000 (top 4 coulf be 1111 if negative)
-			// even though we really only have 8 bits of resolution
-			// so when we want to send 8 bits, we need to shift right 4 and grab bottom 8 bits
-			// then when we receive, we will shift left back 4
-			// Ex: 0x01F0 = 512 = 1G. Even though 512 cannot be stored in 8 bits, the implicit resolution is 8 bits since bottom 4 always 0
-			// i.e. only the middle two hex digits will actually change for positive numbers
-			// 0xFE00 = -512 = -1G
-			// to transmit, we need to convert back to raw bytes
-			// 0x0000 -> 0x07F0 (+), 0 -> 2032 by increments of 16
-			// 0x0800 -> 0xFF0 (-), -2048 -> -16 by increments of 16
-			for(int i = 0; i < 8; i++)
-			{
-				if(accel_data[i].x < 0)
-				{
-					adv_mfg_data.samples[i*3] = (accel_data[i].x + 4096) >> 4;
-				}
-				else
-				{
-					adv_mfg_data.samples[i*3] = accel_data[i].x  >> 4;
-				}
-				if(accel_data[i].y < 0)
-				{
-					adv_mfg_data.samples[i*3+1] = (accel_data[i].y + 4096) >> 4;
-				}
-				else
-				{
-					adv_mfg_data.samples[i*3+1] = accel_data[i].y  >> 4;
-				}
-				if(accel_data[i].z < 0)
-				{
-					adv_mfg_data.samples[i*3+2] = (accel_data[i].z + 4096) >> 4;
-				}
-				else
-				{
-					adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
-				}
-			}
-			// if(!got_feed)
-			// {
-			// 	bt_le_adv_update_data(ad_tx_rx, ARRAY_SIZE(ad_tx_rx), NULL, 0); // update adv data
-			// }
-			// bt_le_adv_update_data(ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // update adv data
 			
-			// gpio_pin_set_dt(&hen_pin, 1);
-			// bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // start advertising
-			// bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), scan_response_data, ARRAY_SIZE(scan_response_data)); // start advertising
-			bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
-			bt_le_ext_adv_start(adv_set, NULL);
-			k_sleep(K_MSEC(18)); // wait at least one cycle
-			// bt_le_adv_stop(); // stop advertising
-			bt_le_ext_adv_stop(adv_set);
-			last_tx_done = true;
-		}
-		else // observer mode
-		{
-			// Read one sample
-			bma400_get_accel_data(BMA400_DATA_ONLY, &acc_data, &bma_sensor);
+        // Enable SPI
+        const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
+        pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
 
-			uint8_t acc_x;
-			uint8_t acc_y;
-			uint8_t acc_z;
-			uint8_t cap_volt;
+        // read data from bma400 fifo
+        bma400_get_fifo_data(&fifo_frame, &bma_sensor);
+        uint16_t accel_frames_req = FIFO_SAMPLES;
+        bma400_extract_accel(&fifo_frame, accel_data, &accel_frames_req, &bma_sensor);
 
-			if(acc_data.x < 0)
-			{
-				acc_x = (acc_data.x + 4096) >> 4;
-			}
-			else
-			{
-				acc_x = acc_data.x  >> 4;
-			}
-			if(acc_data.y < 0)
-			{
-				acc_y = (acc_data.y + 4096) >> 4;
-			}
-			else
-			{
-				acc_y = acc_data.y  >> 4;
-			}
-			if(acc_data.z < 0)
-			{
-				acc_z = (acc_data.z + 4096) >> 4;
-			}
-			else
-			{
-				acc_z = acc_data.z  >> 4;
-			}
+        // after reading, disable the interrupt and put the bma400 to sleep
+        int_en.type = BMA400_FIFO_WM_INT_EN;
+        int_en.conf = BMA400_DISABLE;
+        int8_t rslt = bma400_enable_interrupt(&int_en, 1, &bma_sensor);
+        bma400_set_power_mode(BMA400_MODE_SLEEP,&bma_sensor);
 
-			uint16_t cap_volt_mv = (int)adc_buf;
-			adc_raw_to_millivolts_dt(&adc_channel, &cap_volt_mv);
-			// send_accel_notification(acc_x,acc_y,acc_z,cap_volt_mv);
-		}
+        // Disable SPI
+        pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
+
+        // Disable GPIO
+        const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+        pm_device_action_run(cons1, PM_DEVICE_ACTION_SUSPEND);
+
+
+        // our accelerometer data is implicitly 8 bits but stored as 16 bits
+        // we have 12 bit on the acceleometer 0000 1234 5678 ABCD
+        // we grab the top 8 bit (1234 5678) -> 0000 1234 5678 0000, bottom 4 get zeroed out
+        // then when we put convert into int16_t we have 0000 1234 5678 0000 (top 4 coulf be 1111 if negative)
+        // even though we really only have 8 bits of resolution
+        // so when we want to send 8 bits, we need to shift right 4 and grab bottom 8 bits
+        // then when we receive, we will shift left back 4
+        // Ex: 0x01F0 = 512 = 1G. Even though 512 cannot be stored in 8 bits, the implicit resolution is 8 bits since bottom 4 always 0
+        // i.e. only the middle two hex digits will actually change for positive numbers
+        // 0xFE00 = -512 = -1G
+        // to transmit, we need to convert back to raw bytes
+        // 0x0000 -> 0x07F0 (+), 0 -> 2032 by increments of 16
+        // 0x0800 -> 0xFF0 (-), -2048 -> -16 by increments of 16
+        for(int i = 0; i < 8; i++)
+        {
+            if(accel_data[i].x < 0)
+            {
+                adv_mfg_data.samples[i*3] = (accel_data[i].x + 4096) >> 4;
+            }
+            else
+            {
+                adv_mfg_data.samples[i*3] = accel_data[i].x  >> 4;
+            }
+            if(accel_data[i].y < 0)
+            {
+                adv_mfg_data.samples[i*3+1] = (accel_data[i].y + 4096) >> 4;
+            }
+            else
+            {
+                adv_mfg_data.samples[i*3+1] = accel_data[i].y  >> 4;
+            }
+            if(accel_data[i].z < 0)
+            {
+                adv_mfg_data.samples[i*3+2] = (accel_data[i].z + 4096) >> 4;
+            }
+            else
+            {
+                adv_mfg_data.samples[i*3+2] = accel_data[i].z  >> 4;
+            }
+        }
+        // if(!got_feed)
+        // {
+        // 	bt_le_adv_update_data(ad_tx_rx, ARRAY_SIZE(ad_tx_rx), NULL, 0); // update adv data
+        // }
+        // bt_le_adv_update_data(ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // update adv data
+        
+        // gpio_pin_set_dt(&hen_pin, 1);
+        // bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), NULL, 0); // start advertising
+        // bt_le_adv_start(adv_param, ad_batteryless, ARRAY_SIZE(ad_batteryless), scan_response_data, ARRAY_SIZE(scan_response_data)); // start advertising
+        bt_le_ext_adv_set_data(adv_set, ad_batteryless, ARRAY_SIZE(ad_batteryless),scan_response_data, ARRAY_SIZE(scan_response_data));
+        
+        struct bt_le_ext_adv_start_param start_param = {
+            .timeout = 0,
+            .num_events = 1, // Transmit once again
+        };
+        bt_le_ext_adv_start(adv_set, &start_param);
+        // bt_le_ext_adv_start(adv_set, NULL);
+        // k_sleep(K_MSEC(18)); // wait at least one cycle
+        // // bt_le_adv_stop(); // stop advertising
+        // bt_le_ext_adv_stop(adv_set);
+        last_tx_done = true;
 	}
 }
 
@@ -658,15 +510,8 @@ void thread_run_policy(void)
         // val_mv = val_mv*4; // scale by voltage divider ratio
         // LOG_INF("1. Read ADC: %d mv, scaled: %d mv", val_mv, val_mv*15/10);
 
-		// =========== Check for state change ===========
-		if(sensor_mode == BATTERYLESS_MODE && val_mv < 1000)
-		{
-			// only battery powered mode can detect a voltage this low
-			reinit_observer();
-		}
-
 		// normal batteryless operation
-		if(sensor_mode == BATTERYLESS_MODE && val_mv >= 1550)
+		if(val_mv >= 1550)
 		{
 			const struct device *cons = DEVICE_DT_GET(DT_NODELABEL(spi1));
             pm_device_action_run(cons, PM_DEVICE_ACTION_RESUME);
@@ -680,67 +525,10 @@ void thread_run_policy(void)
             pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
             last_tx_done = false;
 		}
-
-		if(sensor_mode == OBSERVER_MODE)
-		{
-			// turn on LED to avoid saturating
-			if(val_mv > 1750)
-			{
-				gpio_pin_set_dt(&hen_pin, 1);
-			}
-			// turn off LED to avoid going into cold start mode
-			if(val_mv < 1650)
-			{
-				gpio_pin_set_dt(&hen_pin, 0);
-			}
-		}
     }
 }
 K_THREAD_DEFINE(thread_run_policy_id, STACKSIZE, thread_run_policy, NULL, NULL, NULL, THREAD_RUN_POLICY_PRIORITY, 0, 0);
-K_TIMER_DEFINE(timer0, timer0_handler, NULL);
 
-
-void reinit_observer()
-{
-	// Change the mode
-	sensor_mode = OBSERVER_MODE;
-
-	// reinit the bma400 to single sample mode
-	bma400_soft_reset(&bma_sensor);
-	bma400_init(&bma_sensor);
-    init_read_lp();
-
-	// init the h_en pin
-	if (!device_is_ready(hen_pin.port)) {
-		return -1;
-	}
-	int err = gpio_pin_configure_dt(&hen_pin, GPIO_OUTPUT_LOW);
-	if (err < 0) {
-		return -1;
-	}
-
-	// Reenable BLE into different mode
-	bt_disable();
-
-	err = bt_enable(bt_ready);
-	if (err) {
-		LOG_ERR("Bluetooth init failed (err %d)\n", err);
-		return -1;
-	}
-
-	// resume all peripherals
-	const struct device *cons1 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
-    pm_device_action_run(cons1, PM_DEVICE_ACTION_RESUME);
-
-	const struct device *cons2 = DEVICE_DT_GET(DT_NODELABEL(spi1));
-    pm_device_action_run(cons2, PM_DEVICE_ACTION_RESUME);
-
-	const struct device *cons3 = adc_channel.dev;
-    pm_device_action_run(cons3, PM_DEVICE_ACTION_RESUME);
-
-	// Set the policy timer to faster interrupt frequency
-	k_timer_start(&timer0, K_MSEC(35), K_MSEC(35));
-}
 
 
 int main(void)
@@ -748,7 +536,6 @@ int main(void)
 	// Sleep for a second to avoid dying on start
 	k_sleep(K_MSEC(1000));
 
-	// We assume batteryless mode and initialize in that way
 	int err;
 
 	// =================== BLE
@@ -764,10 +551,27 @@ int main(void)
         return -1;
     }
 
-	struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(
-        BT_LE_ADV_OPT_SCANNABLE | 
-		BT_LE_ADV_OPT_USE_IDENTITY |
-		BT_LE_ADV_OPT_NOTIFY_SCAN_REQ,
+    // bt_addr_le_t central_id;
+    // err = bt_addr_le_from_str(CENTRAL_ID_ADDR_STR, "random", &central_id);
+    // err = hci_add_dev_to_resolving_list(&central_id, central_irk);
+    // err = hci_set_addr_resolution_enable(true);
+    // err = bt_le_filter_accept_list_add(&central_id);
+
+
+	// struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(
+    //     BT_LE_ADV_OPT_SCANNABLE | 
+	// 	BT_LE_ADV_OPT_USE_IDENTITY |
+	// 	BT_LE_ADV_OPT_NOTIFY_SCAN_REQ,
+    //     32,
+    //     33,
+    //     NULL
+    // );
+
+    struct bt_le_adv_param adv_param_ = BT_LE_ADV_PARAM_INIT(
+        BT_LE_ADV_OPT_SCANNABLE |
+        BT_LE_ADV_OPT_USE_IDENTITY |
+        BT_LE_ADV_OPT_NOTIFY_SCAN_REQ |
+        BT_LE_ADV_OPT_FILTER_SCAN_REQ,   /* <-- added */
         32,
         33,
         NULL
