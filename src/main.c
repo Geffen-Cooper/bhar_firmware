@@ -34,6 +34,18 @@ static const uint8_t central_irk[16] = {
     0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
 }; /* same IRK the central uses */
 
+#define SENSOR_ID "FF:EE:DD:CC:BB:AA"
+#define SHIFT_AMOUNT 12
+
+// #define SENSOR_ID "FF:EE:DD:CC:BB:AB"
+// #define SHIFT_AMOUNT 8
+
+// #define SENSOR_ID "FF:EE:DD:CC:BB:AC"
+// ##define SHIFT_AMOUNT 4
+
+// #define SENSOR_ID "FF:EE:DD:CC:BB:AD"
+// #define SHIFT_AMOUNT 0
+
 #define CENTRAL_ID_ADDR_STR "FF:EE:DD:CC:BB:EE" /* placeholder identity, same as before */
 static int hci_add_dev_to_resolving_list(const bt_addr_le_t *peer_id_addr,
                                           const uint8_t *peer_irk)
@@ -122,10 +134,14 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
                            struct bt_le_ext_adv_scanned_info *info)
 {
     k_timer_stop(&timer0);
-    uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
-                     ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
-                     ((uint32_t)g_raw_scan_req_mac[5] << 16);
-    uint32_t extracted_payload = prand & 0x3FFFFF;
+    // uint32_t prand = ((uint32_t)g_raw_scan_req_mac[3]) | 
+    //                  ((uint32_t)g_raw_scan_req_mac[4] << 8) | 
+    //                  ((uint32_t)g_raw_scan_req_mac[5] << 16);
+    // uint32_t extracted_payload = prand & 0x3FFFFF;
+
+    uint16_t prand = ((uint16_t)g_raw_scan_req_mac[3]) | 
+                     ((uint16_t)g_raw_scan_req_mac[4] << 8);
+    uint16_t extracted_payload = (prand >> SHIFT_AMOUNT) & 0x000F;
 
     if(extracted_payload == 0)
     {
@@ -155,6 +171,8 @@ static void adv_scanned_cb(struct bt_le_ext_adv *adv,
 	// url_data[20] = mac[3];
 	// url_data[21] = mac[4];
 	// url_data[22] = mac[5];
+    
+    // The central can read the scan response to see if feedback was received
     url_data[17] = g_raw_scan_req_mac[0];
     url_data[18] = g_raw_scan_req_mac[1];
     url_data[19] = g_raw_scan_req_mac[2];
@@ -538,7 +556,7 @@ int main(void)
 	// =================== BLE
 	// Fix the BLE address
 	bt_addr_le_t addr;
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AE", "random", &addr);
+    err = bt_addr_le_from_str(SENSOR_ID, "random", &addr);
     err = bt_id_create(&addr, NULL);
 
 	// Enable BLE
