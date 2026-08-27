@@ -126,20 +126,39 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
                                struct bt_scan_filter_match *filter_match,
                                bool connectable)
 {
-    uint8_t adv_type = device_info->recv_info->adv_type;
-    uint8_t adv_len = device_info->adv_data->len;
-    LOG_INF("Adv Type: %02X, Length: %02X", adv_type, adv_len);
-
-    bt_data_parse(device_info->adv_data, parse_data_cb, NULL);
-
-    return;
-
     struct bt_data *ad;
     int ad_len = device_info->adv_data->len;
+    uint8_t adv_type = device_info->recv_info->adv_type;
 
-    LOG_INF("START: %02X", filter_match->addr.addr->a.val[0]);
-    LOG_HEXDUMP_INF(&device_info->adv_data->data, ad_len, "DATA");
-    LOG_INF("END");
+    if(adv_type == 2)
+    {
+        // 28 bytes total
+        // first byte is length (says 27)
+        // second byte is type
+        // 2 bytes nordic id
+        // 24 bytes acceleromter data
+        LOG_INF("START%02X",filter_match->addr.addr->a.val[0]);
+        LOG_HEXDUMP_INF(&device_info->adv_data->data[4],
+                    ad_len - 4,
+                    "DATA");
+        LOG_INF("END");
+    }
+
+
+    // uint8_t adv_type = device_info->recv_info->adv_type;
+    // uint8_t adv_len = device_info->adv_data->len;
+    // LOG_INF("Adv Type: %02X, Length: %02X", adv_type, adv_len);
+
+    // bt_data_parse(device_info->adv_data, parse_data_cb, NULL);
+
+    // return;
+
+    // struct bt_data *ad;
+    // int ad_len = device_info->adv_data->len;
+
+    // LOG_INF("START: %02X", filter_match->addr.addr->a.val[0]);
+    // LOG_HEXDUMP_INF(&device_info->adv_data->data, ad_len, "DATA");
+    // LOG_INF("END");
 }
 
 /* Register the Nordic scan callback */
