@@ -11,11 +11,17 @@
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/crypto.h>
 #include <dk_buttons_and_leds.h>
+#include <zephyr/drivers/uart.h>
 
 /* Nordic's Scan Module Header */
 #include <bluetooth/scan.h>
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_DBG);
+
+const struct device *uart = DEVICE_DT_GET(DT_NODELABEL(uart0));
+#define RECEIVE_BUFF_SIZE 10
+#define RECEIVE_TIMEOUT 100
+static uint8_t rx_buf[RECEIVE_BUFF_SIZE] = {0};
 
 /* Secret Key shared with the peripheral */
 static const uint8_t irk[16] = {
@@ -193,14 +199,14 @@ static void scan_setup(bool active)
         return;
     }
 
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AD", "random", &addr);
     err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
     if (err) {
         LOG_INF("Scanning filters cannot be set (err %d)\n", err);
         return;
     }
 
-    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:AE", "random", &addr);
+    err = bt_addr_le_from_str("FF:EE:DD:CC:BB:FF", "random", &addr);
     err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &addr);
     if (err) {
         LOG_INF("Scanning filters cannot be set (err %d)\n", err);
@@ -219,6 +225,78 @@ static void scan_setup(bool active)
     }
 }
 
+K_SEM_DEFINE(payload_update_sem, 0, 1);
+
+static void uart_cb(const struct device *dev, struct uart_event *evt, void *user_data)
+{
+	switch (evt->type) {
+
+	case UART_RX_RDY:
+		if ((evt->data.rx.len) == 2) 
+        {
+            uint8_t sensor_idx = evt->data.rx.buf[evt->data.rx.offset];
+            uint8_t mode_cmd = evt->data.rx.buf[evt->data.rx.offset + 1] - '0';
+            if(sensor_idx == 'A')
+            {
+                current_payload &= ~(uint32_t)(0x000F << 12);
+                current_payload |= (uint32_t)(mode_cmd << 12);
+            }
+            else if(sensor_idx == 'B')
+            {
+                current_payload &= ~(uint32_t)(0x000F << 8);
+                current_payload |= (uint32_t)(mode_cmd << 8);
+            }
+            else if(sensor_idx == 'C')
+            {
+                current_payload &= ~(uint32_t)(0x000F << 4);
+                current_payload |= (uint32_t)(mode_cmd << 4);
+            }
+            else if(sensor_idx == 'D')
+            {
+                current_payload &= ~(uint32_t)(0x000F);
+                current_payload |= (uint32_t)(mode_cmd);
+            }
+            
+            k_sem_give(&payload_update_sem);
+		}
+		break;
+	case UART_RX_DISABLED:
+		uart_rx_enable(dev, rx_buf, sizeof rx_buf, RECEIVE_TIMEOUT);
+		break;
+
+	default:
+		break;
+	}
+}
+
+static void payload_update_thread(void *arg1, void *arg2, void *arg3)
+{
+    while (1) {
+        // Wait until UART tells us there is a new payload
+        k_sem_take(&payload_update_sem, K_FOREVER);
+
+        LOG_INF("New payload: 0x%04X", current_payload);
+
+        int err = bt_le_scan_stop();
+        if (err) {
+            LOG_ERR("Failed to stop scan before address update (err %d)", err);
+            continue;
+        }
+
+        update_rpa_from_payload();
+
+        err = bt_scan_start(BT_LE_SCAN_TYPE_ACTIVE);
+        if (err) {
+            LOG_ERR("Failed to restart scan after address update (err %d)", err);
+        }
+    }
+}
+
+#define PAYLOAD_THREAD_STACK_SIZE 1024
+#define PAYLOAD_THREAD_PRIORITY 5
+
+K_THREAD_DEFINE(payload_update_tid,PAYLOAD_THREAD_STACK_SIZE,payload_update_thread,NULL,NULL,NULL,PAYLOAD_THREAD_PRIORITY,0,0);
+
 /* ---------- Main ---------- */
 int main(void)
 {
@@ -234,6 +312,23 @@ int main(void)
     err = dk_buttons_init(button_handler);
     if (err) {
         LOG_ERR("Failed to init buttons (err %d)", err);
+        return -1;
+    }
+
+    if (!device_is_ready(uart)) {
+        LOG_ERR("Failed to init UART (err %d)", err);
+        return -1;
+    }
+
+    err = uart_rx_enable(uart ,rx_buf,sizeof rx_buf,RECEIVE_TIMEOUT);
+	if (err) {
+		LOG_ERR("Failed to init UART RX (err %d)", err);
+        return -1;
+	}
+
+    err = uart_callback_set(uart, uart_cb, NULL);
+    if (err) {
+        LOG_ERR("Failed to init UART CB (err %d)", err);
         return -1;
     }
 
