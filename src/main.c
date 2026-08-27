@@ -34,17 +34,17 @@ static const uint8_t central_irk[16] = {
     0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
 }; /* same IRK the central uses */
 
-#define SENSOR_ID "FF:EE:DD:CC:BB:AA"
-#define SHIFT_AMOUNT 12
+// #define SENSOR_ID "FF:EE:DD:CC:BB:AA"
+// #define SHIFT_AMOUNT 12
 
 // #define SENSOR_ID "FF:EE:DD:CC:BB:AB"
 // #define SHIFT_AMOUNT 8
 
 // #define SENSOR_ID "FF:EE:DD:CC:BB:AC"
-// ##define SHIFT_AMOUNT 4
+// #define SHIFT_AMOUNT 4
 
-// #define SENSOR_ID "FF:EE:DD:CC:BB:AD"
-// #define SHIFT_AMOUNT 0
+#define SENSOR_ID "FF:EE:DD:CC:BB:AD"
+#define SHIFT_AMOUNT 0
 
 #define CENTRAL_ID_ADDR_STR "FF:EE:DD:CC:BB:EE" /* placeholder identity, same as before */
 static int hci_add_dev_to_resolving_list(const bt_addr_le_t *peer_id_addr,
